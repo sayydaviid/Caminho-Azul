@@ -25,10 +25,22 @@ class BottomNav extends StatelessWidget {
         }
       },
       destinations: const [
-        NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Inicio'),
-        NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment), label: 'Ficha'),
-        NavigationDestination(icon: Icon(Icons.timeline_outlined), selectedIcon: Icon(Icons.timeline), label: 'Linha do tempo'),
-        NavigationDestination(icon: Icon(Icons.folder_outlined), selectedIcon: Icon(Icons.folder), label: 'Documentos'),
+        NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Inicio'),
+        NavigationDestination(
+            icon: Icon(Icons.assignment_outlined),
+            selectedIcon: Icon(Icons.assignment),
+            label: 'Ficha'),
+        NavigationDestination(
+            icon: Icon(Icons.timeline_outlined),
+            selectedIcon: Icon(Icons.timeline),
+            label: 'Linha do tempo'),
+        NavigationDestination(
+            icon: Icon(Icons.folder_outlined),
+            selectedIcon: Icon(Icons.folder),
+            label: 'Documentos'),
       ],
     );
   }

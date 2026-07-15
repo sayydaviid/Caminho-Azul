@@ -58,7 +58,8 @@ abstract final class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.background,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: AppColors.border),
@@ -91,7 +92,7 @@ abstract final class AppTheme {
       navigationBarTheme: const NavigationBarThemeData(
         backgroundColor: Colors.white,
         indicatorColor: Color(0xFFDBEAFE),
-        labelTextStyle: MaterialStatePropertyAll(
+        labelTextStyle: WidgetStatePropertyAll(
           TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
         ),
       ),

@@ -18,7 +18,10 @@ class RelatorioScreen extends StatelessWidget {
         const PageHeader(
           title: 'Relatorio Pedagogico',
           subtitle: 'Lucas Oliveira - Emitido em 03/04/2026',
-          trailing: StatusBadge(label: 'Finalizado', tone: 'success', icon: Icons.check_circle_outline),
+          trailing: StatusBadge(
+              label: 'Finalizado',
+              tone: 'success',
+              icon: Icons.check_circle_outline),
         ),
         const SizedBox(height: 16),
         AppCard(
@@ -29,8 +32,13 @@ class RelatorioScreen extends StatelessWidget {
               Center(
                 child: Column(
                   children: [
-                    Text('Relatorio Pedagogico', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppColors.primary)),
-                    const Text('Sistema Caminho Azul', style: TextStyle(color: AppColors.muted)),
+                    Text('Relatorio Pedagogico',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(color: AppColors.primary)),
+                    const Text('Sistema Caminho Azul',
+                        style: TextStyle(color: AppColors.muted)),
                   ],
                 ),
               ),
@@ -89,7 +97,8 @@ class RelatorioScreen extends StatelessWidget {
                 child: Text(
                   'Documento gerado pelo sistema Caminho Azul em 03/04/2026\nResponsavel: Dra. Ana Silva - Coordenacao Escolar',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.5),
+                  style: TextStyle(
+                      color: AppColors.muted, fontSize: 12, height: 1.5),
                 ),
               ),
             ],
@@ -106,12 +115,31 @@ class RelatorioScreen extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  CustomButton(label: 'Exportar PDF', icon: Icons.download_outlined, onPressed: () {}),
-                  CustomButton(label: 'Editar relatorio', icon: Icons.edit_outlined, onPressed: () {}),
-                  CustomButton(label: 'Compartilhar', icon: Icons.share_outlined, onPressed: () {}),
-                  CustomButton(label: 'Enviar para familia', icon: Icons.send_outlined, primary: true, onPressed: () {}),
-                  CustomButton(label: 'Anexar documento', icon: Icons.attach_file, onPressed: () {}),
-                  CustomButton(label: 'Imprimir', icon: Icons.print_outlined, onPressed: () {}),
+                  CustomButton(
+                      label: 'Exportar PDF',
+                      icon: Icons.download_outlined,
+                      onPressed: () {}),
+                  CustomButton(
+                      label: 'Editar relatorio',
+                      icon: Icons.edit_outlined,
+                      onPressed: () {}),
+                  CustomButton(
+                      label: 'Compartilhar',
+                      icon: Icons.share_outlined,
+                      onPressed: () {}),
+                  CustomButton(
+                      label: 'Enviar para familia',
+                      icon: Icons.send_outlined,
+                      primary: true,
+                      onPressed: () {}),
+                  CustomButton(
+                      label: 'Anexar documento',
+                      icon: Icons.attach_file,
+                      onPressed: () {}),
+                  CustomButton(
+                      label: 'Imprimir',
+                      icon: Icons.print_outlined,
+                      onPressed: () {}),
                 ],
               ),
             ],
@@ -123,9 +151,24 @@ class RelatorioScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Anexos', style: Theme.of(context).textTheme.titleMedium),
-              const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.description_outlined, color: AppColors.primary), title: Text('PEI_Lucas_2026.pdf'), subtitle: Text('PEI - 01/04/2026')),
-              const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.description_outlined, color: AppColors.primary), title: Text('PEE_Monteiro_Lobato.pdf'), subtitle: Text('PEE - 15/03/2026')),
-              const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.description_outlined, color: AppColors.primary), title: Text('Ficha_Complementar.pdf'), subtitle: Text('Ficha - 28/03/2026')),
+              const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.description_outlined,
+                      color: AppColors.primary),
+                  title: Text('PEI_Lucas_2026.pdf'),
+                  subtitle: Text('PEI - 01/04/2026')),
+              const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.description_outlined,
+                      color: AppColors.primary),
+                  title: Text('PEE_Monteiro_Lobato.pdf'),
+                  subtitle: Text('PEE - 15/03/2026')),
+              const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.description_outlined,
+                      color: AppColors.primary),
+                  title: Text('Ficha_Complementar.pdf'),
+                  subtitle: Text('Ficha - 28/03/2026')),
             ],
           ),
         ),
@@ -135,7 +178,8 @@ class RelatorioScreen extends StatelessWidget {
   }
 }
 
-const _reportText = TextStyle(color: AppColors.muted, height: 1.7, fontSize: 14);
+const _reportText =
+    TextStyle(color: AppColors.muted, height: 1.7, fontSize: 14);
 
 class _ReportSection extends StatelessWidget {
   const _ReportSection({required this.title, required this.child});
@@ -150,7 +194,11 @@ class _ReportSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.primary)),
+          Text(title,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: AppColors.primary)),
           const SizedBox(height: 10),
           child,
         ],
@@ -172,7 +220,10 @@ class _ReportField extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 130, child: Text('$label:', style: const TextStyle(color: AppColors.muted))),
+          SizedBox(
+              width: 130,
+              child: Text('$label:',
+                  style: const TextStyle(color: AppColors.muted))),
           Expanded(child: Text(value)),
         ],
       ),
@@ -193,7 +244,8 @@ class _MilestoneRow extends StatelessWidget {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: AppColors.secondary, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+          color: AppColors.secondary, borderRadius: BorderRadius.circular(8)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -215,7 +267,8 @@ class _ReportMilestones extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: MockData.reportMilestones
-          .map((item) => _MilestoneRow(item.area, item.status, item.description))
+          .map(
+              (item) => _MilestoneRow(item.area, item.status, item.description))
           .toList(),
     );
   }
@@ -232,7 +285,12 @@ class _BulletList extends StatelessWidget {
       children: items
           .map((item) => Padding(
                 padding: const EdgeInsets.only(bottom: 7),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('-  ', style: _reportText), Expanded(child: Text(item, style: _reportText))]),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('-  ', style: _reportText),
+                      Expanded(child: Text(item, style: _reportText))
+                    ]),
               ))
           .toList(),
     );

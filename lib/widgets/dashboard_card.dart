@@ -16,15 +16,25 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final borderRadius = BorderRadius.circular(12);
+
+    return SizedBox(
       width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
+      child: Material(
         color: color,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: borderRadius,
+        clipBehavior: Clip.antiAlias,
+        child: Ink(
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.border),
+            borderRadius: borderRadius,
+          ),
+          child: Padding(
+            padding: padding,
+            child: child,
+          ),
+        ),
       ),
-      child: child,
     );
   }
 }
@@ -53,7 +63,7 @@ class DashboardCard extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, size: 18, color: color),

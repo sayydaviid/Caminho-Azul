@@ -32,13 +32,24 @@ class _AdminScreenState extends State<AdminScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const PageHeader(title: 'Administracao', subtitle: 'Gestao da rede local Caminho Azul'),
+        const PageHeader(
+            title: 'Administracao',
+            subtitle: 'Gestao da rede local Caminho Azul'),
         const SizedBox(height: 14),
         Row(
           children: [
-            Expanded(child: CustomButton(label: 'Exportar', icon: Icons.download_outlined, onPressed: () {})),
+            Expanded(
+                child: CustomButton(
+                    label: 'Exportar',
+                    icon: Icons.download_outlined,
+                    onPressed: () {})),
             const SizedBox(width: 8),
-            Expanded(child: CustomButton(label: 'Novo cadastro', icon: Icons.add, primary: true, onPressed: () {})),
+            Expanded(
+                child: CustomButton(
+                    label: 'Novo cadastro',
+                    icon: Icons.add,
+                    primary: true,
+                    onPressed: () {})),
           ],
         ),
         const SizedBox(height: 16),
@@ -61,7 +72,8 @@ class _AdminScreenState extends State<AdminScreen> {
         const SizedBox(height: 14),
         TextField(
           onChanged: (value) => setState(() => query = value.toLowerCase()),
-          decoration: const InputDecoration(hintText: 'Buscar...', prefixIcon: Icon(Icons.search)),
+          decoration: const InputDecoration(
+              hintText: 'Buscar...', prefixIcon: Icon(Icons.search)),
         ),
         const SizedBox(height: 16),
         _content(),
@@ -88,10 +100,13 @@ class _Institutions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = MockData.institutions.where((item) => item.name.toLowerCase().contains(query)).toList();
+    final items = MockData.institutions
+        .where((item) => item.name.toLowerCase().contains(query))
+        .toList();
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Column(children: items.map((item) => _InstitutionTile(item: item)).toList()),
+      child: Column(
+          children: items.map((item) => _InstitutionTile(item: item)).toList()),
     );
   }
 }
@@ -105,13 +120,20 @@ class _InstitutionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: const CircleAvatar(backgroundColor: Color(0xFFDBEAFE), child: Icon(Icons.business_outlined, color: AppColors.primary)),
-      title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text('${item.type} - ${item.owner}\n${item.address} - ${item.contact}'),
+      leading: const CircleAvatar(
+          backgroundColor: Color(0xFFDBEAFE),
+          child: Icon(Icons.business_outlined, color: AppColors.primary)),
+      title:
+          Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(
+          '${item.type} - ${item.owner}\n${item.address} - ${item.contact}'),
       isThreeLine: true,
       trailing: PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
-        itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Editar')), PopupMenuItem(value: 'remove', child: Text('Remover'))],
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'edit', child: Text('Editar')),
+          PopupMenuItem(value: 'remove', child: Text('Remover'))
+        ],
       ),
     );
   }
@@ -124,7 +146,9 @@ class _Professionals extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = MockData.professionals.where((item) => item.name.toLowerCase().contains(query)).toList();
+    final items = MockData.professionals
+        .where((item) => item.name.toLowerCase().contains(query))
+        .toList();
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
@@ -133,8 +157,10 @@ class _Professionals extends StatelessWidget {
               (item) => ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-                title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text('${item.role} - ${item.area}\n${item.institution}'),
+                title: Text(item.name,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle:
+                    Text('${item.role} - ${item.area}\n${item.institution}'),
                 isThreeLine: true,
                 trailing: StatusBadge(label: item.profile),
               ),
@@ -152,7 +178,9 @@ class _Network extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = MockData.institutions.where((item) => item.active && item.name.toLowerCase().contains(query)).toList();
+    final items = MockData.institutions
+        .where((item) => item.active && item.name.toLowerCase().contains(query))
+        .toList();
     return Column(
       children: items
           .map(
@@ -162,14 +190,25 @@ class _Network extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [const Icon(Icons.business_outlined, color: AppColors.primary), const Spacer(), const StatusBadge(label: 'Ativo', tone: 'success')]),
+                    const Row(children: [
+                      Icon(Icons.business_outlined, color: AppColors.primary),
+                      Spacer(),
+                      StatusBadge(label: 'Ativo', tone: 'success')
+                    ]),
                     const SizedBox(height: 10),
-                    Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text(item.type, style: const TextStyle(color: AppColors.primary, fontSize: 12)),
+                    Text(item.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(item.type,
+                        style: const TextStyle(
+                            color: AppColors.primary, fontSize: 12)),
                     const SizedBox(height: 5),
-                    Text(item.address, style: const TextStyle(color: AppColors.muted)),
-                    Text(item.contact, style: const TextStyle(color: AppColors.muted)),
-                    Text('Resp: ${item.owner}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                    Text(item.address,
+                        style: const TextStyle(color: AppColors.muted)),
+                    Text(item.contact,
+                        style: const TextStyle(color: AppColors.muted)),
+                    Text('Resp: ${item.owner}',
+                        style: const TextStyle(
+                            color: AppColors.muted, fontSize: 12)),
                   ],
                 ),
               ),
@@ -191,7 +230,8 @@ class _Users extends StatelessWidget {
         children: MockData.adminUsers
             .map((user) => ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.account_circle_outlined, color: AppColors.primary),
+                  leading: const Icon(Icons.account_circle_outlined,
+                      color: AppColors.primary),
                   title: Text(user.email),
                   subtitle: Text('Ultimo acesso: ${user.lastAccess}'),
                   trailing: StatusBadge(label: user.profile),
@@ -216,8 +256,20 @@ class _Parameters extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [Expanded(child: Text(group.title, style: const TextStyle(fontWeight: FontWeight.w700))), IconButton(onPressed: () {}, icon: const Icon(Icons.edit_outlined, size: 19))]),
-                    ...group.items.map((item) => ListTile(contentPadding: EdgeInsets.zero, dense: true, leading: const Icon(Icons.chevron_right, size: 18), title: Text(item))),
+                    Row(children: [
+                      Expanded(
+                          child: Text(group.title,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700))),
+                      IconButton(
+                          onPressed: () {},
+                          icon: const Icon(Icons.edit_outlined, size: 19))
+                    ]),
+                    ...group.items.map((item) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        leading: const Icon(Icons.chevron_right, size: 18),
+                        title: Text(item))),
                   ],
                 ),
               ),

@@ -19,13 +19,16 @@ class _LinhaTempoScreenState extends State<LinhaTempoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final items = filter == 'todos' ? MockData.timeline : MockData.timeline.where((item) => item.status == filter).toList();
+    final items = filter == 'todos'
+        ? MockData.timeline
+        : MockData.timeline.where((item) => item.status == filter).toList();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         const PageHeader(
           title: 'Linha do Tempo',
-          subtitle: 'Lucas Oliveira - EM Monteiro Lobato\nUltima atualizacao: 03/04/2026',
+          subtitle:
+              'Lucas Oliveira - EM Monteiro Lobato\nUltima atualizacao: 03/04/2026',
           trailing: StatusBadge(label: 'Acolhimento', tone: 'primary'),
         ),
         const SizedBox(height: 16),
@@ -46,7 +49,8 @@ class _LinhaTempoScreenState extends State<LinhaTempoScreen> {
         ...items.map((item) => _TimelineItem(
               item: item,
               expanded: expanded == item.id,
-              onTap: () => setState(() => expanded = expanded == item.id ? null : item.id),
+              onTap: () => setState(
+                  () => expanded = expanded == item.id ? null : item.id),
             )),
         const SizedBox(height: 24),
       ],
@@ -55,7 +59,8 @@ class _LinhaTempoScreenState extends State<LinhaTempoScreen> {
 }
 
 class _TimelineItem extends StatelessWidget {
-  const _TimelineItem({required this.item, required this.expanded, required this.onTap});
+  const _TimelineItem(
+      {required this.item, required this.expanded, required this.onTap});
 
   final TimelineRecord item;
   final bool expanded;
@@ -77,13 +82,18 @@ class _TimelineItem extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
                 border: Border.all(color: color, width: 2),
               ),
               child: Icon(_icon(item.id), color: color, size: 18),
             ),
-            Container(width: 2, height: expanded ? 170 : 95, color: item.status == 'concluido' ? AppColors.success : AppColors.border),
+            Container(
+                width: 2,
+                height: expanded ? 170 : 95,
+                color: item.status == 'concluido'
+                    ? AppColors.success
+                    : AppColors.border),
           ],
         ),
         const SizedBox(width: 12),
@@ -97,8 +107,13 @@ class _TimelineItem extends StatelessWidget {
                 duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  color: item.status == 'atual' ? const Color(0xFFF4F8FF) : Colors.white,
-                  border: Border.all(color: item.status == 'atual' ? const Color(0xFFBFDBFE) : AppColors.border),
+                  color: item.status == 'atual'
+                      ? const Color(0xFFF4F8FF)
+                      : Colors.white,
+                  border: Border.all(
+                      color: item.status == 'atual'
+                          ? const Color(0xFFBFDBFE)
+                          : AppColors.border),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -106,22 +121,38 @@ class _TimelineItem extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(child: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w700))),
-                        if (item.status == 'pendente') const Icon(Icons.error_outline, size: 17, color: AppColors.warning),
-                        Icon(expanded ? Icons.expand_less : Icons.expand_more, color: AppColors.muted),
+                        Expanded(
+                            child: Text(item.title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700))),
+                        if (item.status == 'pendente')
+                          const Icon(Icons.error_outline,
+                              size: 17, color: AppColors.warning),
+                        Icon(expanded ? Icons.expand_less : Icons.expand_more,
+                            color: AppColors.muted),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(item.date == '-' ? item.owner : '${item.date} - ${item.time} | ${item.owner}', style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                        item.date == '-'
+                            ? item.owner
+                            : '${item.date} - ${item.time} | ${item.owner}',
+                        style: Theme.of(context).textTheme.bodySmall),
                     if (expanded) ...[
                       const Divider(height: 24),
-                      Text(item.summary, style: const TextStyle(color: AppColors.muted, height: 1.5)),
+                      Text(item.summary,
+                          style: const TextStyle(
+                              color: AppColors.muted, height: 1.5)),
                       if (item.documents.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
-                          children: item.documents.map((document) => StatusBadge(label: document, icon: Icons.description_outlined)).toList(),
+                          children: item.documents
+                              .map((document) => StatusBadge(
+                                  label: document,
+                                  icon: Icons.description_outlined))
+                              .toList(),
                         ),
                       ],
                     ],

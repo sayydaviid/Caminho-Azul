@@ -49,7 +49,12 @@ class StatusBadge extends StatelessWidget {
           const Color(0xFFD1FAE5),
           AppColors.success,
         ),
-      'warning' || 'Pendente' || 'Aguardando' || 'Media' || 'Requer atencao' => (
+      'warning' ||
+      'Pendente' ||
+      'Aguardando' ||
+      'Media' ||
+      'Requer atencao' =>
+        (
           const Color(0xFFFEF3C7),
           AppColors.warning,
         ),

@@ -47,12 +47,17 @@ class FichaObservacaoScreen extends StatelessWidget {
             children: [
               const Row(
                 children: [
-                  Expanded(child: Text('Progresso do preenchimento', style: TextStyle(color: AppColors.muted))),
+                  Expanded(
+                      child: Text('Progresso do preenchimento',
+                          style: TextStyle(color: AppColors.muted))),
                   Text('35%', style: TextStyle(fontWeight: FontWeight.w700)),
                 ],
               ),
               const SizedBox(height: 10),
-              ClipRRect(borderRadius: BorderRadius.circular(99), child: const LinearProgressIndicator(value: 0.35, minHeight: 8)),
+              ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child:
+                      const LinearProgressIndicator(value: 0.35, minHeight: 8)),
             ],
           ),
         ),
@@ -65,13 +70,17 @@ class FichaObservacaoScreen extends StatelessWidget {
             children: [
               CustomInput(label: 'Nome do aluno', hint: 'Lucas Oliveira'),
               SizedBox(height: 12),
-              CustomInput(label: 'Data de nascimento', hint: '15/06/2019', icon: Icons.calendar_today_outlined),
+              CustomInput(
+                  label: 'Data de nascimento',
+                  hint: '15/06/2019',
+                  icon: Icons.calendar_today_outlined),
               SizedBox(height: 12),
               CustomInput(label: 'Turma', hint: '2o ano B'),
               SizedBox(height: 12),
               CustomInput(label: 'Escola', hint: 'EM Monteiro Lobato'),
               SizedBox(height: 12),
-              CustomInput(label: 'Professor responsavel', hint: 'Prof. Carla Mendes'),
+              CustomInput(
+                  label: 'Professor responsavel', hint: 'Prof. Carla Mendes'),
             ],
           ),
         ),
@@ -79,7 +88,9 @@ class FichaObservacaoScreen extends StatelessWidget {
         _ObservationSection(
           title: '2. Marcos do desenvolvimento',
           icon: Icons.psychology_outlined,
-          child: Column(children: milestones.map((item) => _Milestone(label: item)).toList()),
+          child: Column(
+              children:
+                  milestones.map((item) => _Milestone(label: item)).toList()),
         ),
         const SizedBox(height: 12),
         const _ObservationSection(
@@ -87,7 +98,8 @@ class FichaObservacaoScreen extends StatelessWidget {
           icon: Icons.star_outline,
           child: Column(
             children: [
-              CustomInput(label: 'Habilidades cognitivas percebidas', maxLines: 3),
+              CustomInput(
+                  label: 'Habilidades cognitivas percebidas', maxLines: 3),
               SizedBox(height: 12),
               CustomInput(label: 'Interesses especificos', maxLines: 3),
               SizedBox(height: 12),
@@ -121,7 +133,8 @@ class FichaObservacaoScreen extends StatelessWidget {
               SizedBox(height: 12),
               CustomInput(label: 'Relacao com colegas', maxLines: 3),
               SizedBox(height: 12),
-              CustomInput(label: 'Observacoes do ambiente escolar', maxLines: 3),
+              CustomInput(
+                  label: 'Observacoes do ambiente escolar', maxLines: 3),
             ],
           ),
         ),
@@ -131,7 +144,8 @@ class FichaObservacaoScreen extends StatelessWidget {
           icon: Icons.send_outlined,
           child: Column(
             children: [
-              CustomInput(label: 'Necessidade de encaminhamento', hint: 'A avaliar'),
+              CustomInput(
+                  label: 'Necessidade de encaminhamento', hint: 'A avaliar'),
               SizedBox(height: 12),
               CustomInput(label: 'Prioridade', hint: 'Media'),
               SizedBox(height: 12),
@@ -142,11 +156,24 @@ class FichaObservacaoScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        CustomButton(label: 'Anexar arquivo', icon: Icons.attach_file, fullWidth: true, onPressed: () {}),
+        CustomButton(
+            label: 'Anexar arquivo',
+            icon: Icons.attach_file,
+            fullWidth: true,
+            onPressed: () {}),
         const SizedBox(height: 8),
-        CustomButton(label: 'Salvar rascunho', icon: Icons.save_outlined, fullWidth: true, onPressed: () {}),
+        CustomButton(
+            label: 'Salvar rascunho',
+            icon: Icons.save_outlined,
+            fullWidth: true,
+            onPressed: () {}),
         const SizedBox(height: 8),
-        CustomButton(label: 'Finalizar preenchimento', icon: Icons.check_circle_outline, primary: true, fullWidth: true, onPressed: () {}),
+        CustomButton(
+            label: 'Finalizar preenchimento',
+            icon: Icons.check_circle_outline,
+            primary: true,
+            fullWidth: true,
+            onPressed: () {}),
         const SizedBox(height: 24),
       ],
     );
@@ -154,7 +181,11 @@ class FichaObservacaoScreen extends StatelessWidget {
 }
 
 class _ObservationSection extends StatelessWidget {
-  const _ObservationSection({required this.title, required this.icon, required this.child, this.initiallyExpanded = false});
+  const _ObservationSection(
+      {required this.title,
+      required this.icon,
+      required this.child,
+      this.initiallyExpanded = false});
 
   final String title;
   final IconData icon;
@@ -163,26 +194,33 @@ class _ObservationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        shape: const Border(),
-        collapsedShape: const Border(),
-        leading: CircleAvatar(
-          radius: 17,
-          backgroundColor: const Color(0xFFDBEAFE),
-          child: Icon(icon, size: 18, color: AppColors.primary),
+    final borderRadius = BorderRadius.circular(12);
+
+    return Material(
+      color: Colors.white,
+      borderRadius: borderRadius,
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.border),
+          borderRadius: borderRadius,
         ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        children: [
-          const Divider(height: 1),
-          Padding(padding: const EdgeInsets.all(16), child: child),
-        ],
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
+          shape: const Border(),
+          collapsedShape: const Border(),
+          leading: CircleAvatar(
+            radius: 17,
+            backgroundColor: const Color(0xFFDBEAFE),
+            child: Icon(icon, size: 18, color: AppColors.primary),
+          ),
+          title:
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          children: [
+            const Divider(height: 1),
+            Padding(padding: const EdgeInsets.all(16), child: child),
+          ],
+        ),
       ),
     );
   }
@@ -206,19 +244,25 @@ class _MilestoneState extends State<_Milestone> {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: AppColors.secondary, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+          color: AppColors.secondary, borderRadius: BorderRadius.circular(8)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(widget.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(widget.label,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: value,
-            items: ['Adequado', 'Em desenvolvimento', 'Requer atencao'].map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+            initialValue: value,
+            items: ['Adequado', 'Em desenvolvimento', 'Requer atencao']
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                .toList(),
             onChanged: (next) => setState(() => value = next ?? value),
           ),
           const SizedBox(height: 8),
-          const TextField(decoration: InputDecoration(hintText: 'Observacoes...'), maxLines: 2),
+          const TextField(
+              decoration: InputDecoration(hintText: 'Observacoes...'),
+              maxLines: 2),
         ],
       ),
     );

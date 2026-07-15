@@ -25,7 +25,9 @@ class _SaudeScreenState extends State<SaudeScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const PageHeader(title: 'Painel da Saude', subtitle: 'Encaminhamentos, prontuario e contrarreferencia'),
+        const PageHeader(
+            title: 'Painel da Saude',
+            subtitle: 'Encaminhamentos, prontuario e contrarreferencia'),
         const SizedBox(height: 16),
         _HealthSection(
           title: 'Encaminhamentos recebidos',
@@ -48,17 +50,20 @@ class _SaudeScreenState extends State<SaudeScreen> {
               _SummaryBox(
                 icon: Icons.school_outlined,
                 title: 'Sintese pedagogica',
-                text: 'Frequencia regular e boa adaptacao, com dificuldades em interacoes sociais em grupo e sensibilidade sonora.',
+                text:
+                    'Frequencia regular e boa adaptacao, com dificuldades em interacoes sociais em grupo e sensibilidade sonora.',
               ),
               _SummaryBox(
                 icon: Icons.star_outline,
                 title: 'Potencialidades',
-                text: 'Excelente memoria visual, interesse por numeros e capacidade de foco prolongado.',
+                text:
+                    'Excelente memoria visual, interesse por numeros e capacidade de foco prolongado.',
               ),
               _SummaryBox(
                 icon: Icons.warning_amber_outlined,
                 title: 'Sinais observados',
-                text: 'Dificuldade em interacoes reciprocas, sensibilidade auditiva e resistencia a mudancas.',
+                text:
+                    'Dificuldade em interacoes reciprocas, sensibilidade auditiva e resistencia a mudancas.',
               ),
               _SummaryBox(
                 icon: Icons.description_outlined,
@@ -75,7 +80,8 @@ class _SaudeScreenState extends State<SaudeScreen> {
             children: [
               _ChoiceField(label: 'Acolhimento realizado?'),
               SizedBox(height: 12),
-              CustomInput(label: 'Conduta adotada', hint: 'Selecione a conduta'),
+              CustomInput(
+                  label: 'Conduta adotada', hint: 'Selecione a conduta'),
               SizedBox(height: 12),
               CustomInput(label: 'Observacoes do profissional', maxLines: 4),
               SizedBox(height: 12),
@@ -90,9 +96,12 @@ class _SaudeScreenState extends State<SaudeScreen> {
             children: [
               _ChoiceField(label: 'Terapia iniciada?'),
               SizedBox(height: 12),
-              CustomInput(label: 'Data de inicio', icon: Icons.calendar_today_outlined),
+              CustomInput(
+                  label: 'Data de inicio', icon: Icons.calendar_today_outlined),
               SizedBox(height: 12),
-              CustomInput(label: 'Tipo de atendimento', hint: 'Fonoaudiologia, TO, Psicologia...'),
+              CustomInput(
+                  label: 'Tipo de atendimento',
+                  hint: 'Fonoaudiologia, TO, Psicologia...'),
               SizedBox(height: 12),
               CustomInput(label: 'Frequencia', hint: 'Semanal'),
               SizedBox(height: 12),
@@ -119,10 +128,23 @@ class _SaudeScreenState extends State<SaudeScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            CustomButton(label: 'Solicitar informacoes', icon: Icons.chat_bubble_outline, onPressed: () {}),
-            CustomButton(label: 'Anexar documento', icon: Icons.attach_file, onPressed: () {}),
-            CustomButton(label: 'Registrar retorno', icon: Icons.send_outlined, primary: true, onPressed: () {}),
-            CustomButton(label: 'Atualizar status', icon: Icons.refresh, onPressed: () {}),
+            CustomButton(
+                label: 'Solicitar informacoes',
+                icon: Icons.chat_bubble_outline,
+                onPressed: () {}),
+            CustomButton(
+                label: 'Anexar documento',
+                icon: Icons.attach_file,
+                onPressed: () {}),
+            CustomButton(
+                label: 'Registrar retorno',
+                icon: Icons.send_outlined,
+                primary: true,
+                onPressed: () {}),
+            CustomButton(
+                label: 'Atualizar status',
+                icon: Icons.refresh,
+                onPressed: () {}),
           ],
         ),
         const SizedBox(height: 24),
@@ -153,7 +175,8 @@ class _HealthSection extends StatelessWidget {
 }
 
 class _ReferralTile extends StatelessWidget {
-  const _ReferralTile({required this.item, required this.selected, required this.onTap});
+  const _ReferralTile(
+      {required this.item, required this.selected, required this.onTap});
 
   final ReferralRecord item;
   final bool selected;
@@ -161,25 +184,27 @@ class _ReferralTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
         color: selected ? const Color(0xFFF4F8FF) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text('${item.school}\n${item.reason} - ${item.date}'),
-        isThreeLine: true,
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            StatusBadge(label: item.status, tone: item.status),
-            const SizedBox(height: 5),
-            StatusBadge(label: item.priority, tone: item.priority),
-          ],
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          onTap: onTap,
+          title: Text(item.name,
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text('${item.school}\n${item.reason} - ${item.date}'),
+          isThreeLine: true,
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              StatusBadge(label: item.status, tone: item.status),
+              const SizedBox(height: 5),
+              StatusBadge(label: item.priority, tone: item.priority),
+            ],
+          ),
         ),
       ),
     );
@@ -187,7 +212,8 @@ class _ReferralTile extends StatelessWidget {
 }
 
 class _SummaryBox extends StatelessWidget {
-  const _SummaryBox({required this.icon, required this.title, required this.text});
+  const _SummaryBox(
+      {required this.icon, required this.title, required this.text});
 
   final IconData icon;
   final String title;
@@ -199,13 +225,19 @@ class _SummaryBox extends StatelessWidget {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(color: AppColors.secondary, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+          color: AppColors.secondary, borderRadius: BorderRadius.circular(8)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [Icon(icon, size: 18, color: AppColors.primary), const SizedBox(width: 7), Text(title, style: const TextStyle(fontWeight: FontWeight.w700))]),
+          Row(children: [
+            Icon(icon, size: 18, color: AppColors.primary),
+            const SizedBox(width: 7),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700))
+          ]),
           const SizedBox(height: 7),
-          Text(text, style: const TextStyle(color: AppColors.muted, height: 1.5)),
+          Text(text,
+              style: const TextStyle(color: AppColors.muted, height: 1.5)),
         ],
       ),
     );
@@ -232,7 +264,10 @@ class _ChoiceFieldState extends State<_ChoiceField> {
         Text(widget.label, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 6),
         SegmentedButton<String>(
-          segments: const [ButtonSegment(value: 'Sim', label: Text('Sim')), ButtonSegment(value: 'Nao', label: Text('Nao'))],
+          segments: const [
+            ButtonSegment(value: 'Sim', label: Text('Sim')),
+            ButtonSegment(value: 'Nao', label: Text('Nao'))
+          ],
           selected: {value},
           onSelectionChanged: (next) => setState(() => value = next.first),
         ),
@@ -251,7 +286,11 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Row(children: [Icon(icon, size: 18, color: AppColors.muted), const SizedBox(width: 8), Expanded(child: Text(text))]),
+      child: Row(children: [
+        Icon(icon, size: 18, color: AppColors.muted),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text))
+      ]),
     );
   }
 }

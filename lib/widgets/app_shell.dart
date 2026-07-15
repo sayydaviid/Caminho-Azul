@@ -35,22 +35,34 @@ class AppShell extends StatelessWidget {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ola,', style: TextStyle(fontSize: 12, color: AppColors.muted)),
-            Text('Dra. Ana Silva', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            Text('Ola,',
+                style: TextStyle(fontSize: 12, color: AppColors.muted)),
+            Text('Dra. Ana Silva',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           ],
         ),
         actions: [
-          IconButton(onPressed: () {}, tooltip: 'Buscar', icon: const Icon(Icons.search)),
+          IconButton(
+              onPressed: () {},
+              tooltip: 'Buscar',
+              icon: const Icon(Icons.search)),
           Badge(
             smallSize: 8,
-            child: IconButton(onPressed: () {}, tooltip: 'Notificacoes', icon: const Icon(Icons.notifications_outlined)),
+            child: IconButton(
+                onPressed: () {},
+                tooltip: 'Notificacoes',
+                icon: const Icon(Icons.notifications_outlined)),
           ),
           const Padding(
             padding: EdgeInsets.only(right: 12),
             child: CircleAvatar(
               radius: 17,
               backgroundColor: Color(0xFFDBEAFE),
-              child: Text('AS', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w700)),
+              child: Text('AS',
+                  style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
             ),
           ),
         ],
@@ -73,8 +85,13 @@ class AppShell extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Caminho Azul', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                        Text('Plataforma TEA', style: TextStyle(color: Color(0xFFAFC0D4), fontSize: 12)),
+                        Text('Caminho Azul',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700)),
+                        Text('Plataforma TEA',
+                            style: TextStyle(
+                                color: Color(0xFFAFC0D4), fontSize: 12)),
                       ],
                     ),
                   ],
@@ -91,10 +108,15 @@ class AppShell extends StatelessWidget {
                         child: ListTile(
                           selected: _isSelected(item.$1),
                           selectedTileColor: AppColors.sidebarAccent,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          leading: Icon(item.$2, color: const Color(0xFFD4DEEA), size: 20),
-                          title: Text(item.$3, style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 14)),
-                          onTap: () => Navigator.pushReplacementNamed(context, item.$1),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          leading: Icon(item.$2,
+                              color: const Color(0xFFD4DEEA), size: 20),
+                          title: Text(item.$3,
+                              style: const TextStyle(
+                                  color: Color(0xFFE2E8F0), fontSize: 14)),
+                          onTap: () =>
+                              Navigator.pushReplacementNamed(context, item.$1),
                         ),
                       ),
                   ],
@@ -103,8 +125,10 @@ class AppShell extends StatelessWidget {
               const Divider(color: AppColors.sidebarAccent, height: 1),
               ListTile(
                 leading: const Icon(Icons.logout, color: Color(0xFFD4DEEA)),
-                title: const Text('Sair', style: TextStyle(color: Color(0xFFE2E8F0))),
-                onTap: () => Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (_) => false),
+                title: const Text('Sair',
+                    style: TextStyle(color: Color(0xFFE2E8F0))),
+                onTap: () => Navigator.pushNamedAndRemoveUntil(
+                    context, AppRoutes.login, (_) => false),
               ),
             ],
           ),

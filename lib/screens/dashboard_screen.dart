@@ -26,7 +26,9 @@ class DashboardScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const PageHeader(title: 'Dashboard', subtitle: 'Visao geral dos casos e proximos passos'),
+        const PageHeader(
+            title: 'Dashboard',
+            subtitle: 'Visao geral dos casos e proximos passos'),
         const SizedBox(height: 18),
         GridView.builder(
           shrinkWrap: true,
@@ -51,8 +53,11 @@ class DashboardScreen extends StatelessWidget {
         const SizedBox(height: 20),
         _Section(
           title: 'Casos recentes',
-          trailing: TextButton(onPressed: () {}, child: const Text('Ver todos')),
-          child: Column(children: MockData.cases.map((item) => _CaseTile(item: item)).toList()),
+          trailing:
+              TextButton(onPressed: () {}, child: const Text('Ver todos')),
+          child: Column(
+              children:
+                  MockData.cases.map((item) => _CaseTile(item: item)).toList()),
         ),
         const SizedBox(height: 16),
         _Section(
@@ -62,8 +67,10 @@ class DashboardScreen extends StatelessWidget {
                 .map(
                   (notice) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(radius: 5, backgroundColor: _tone(notice.tone)),
-                    title: Text(notice.text, style: const TextStyle(fontSize: 14)),
+                    leading: CircleAvatar(
+                        radius: 5, backgroundColor: _tone(notice.tone)),
+                    title:
+                        Text(notice.text, style: const TextStyle(fontSize: 14)),
                   ),
                 )
                 .toList(),
@@ -78,11 +85,28 @@ class DashboardScreen extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              CustomButton(label: 'Novo caso', icon: Icons.add, onPressed: () {}),
-              CustomButton(label: 'Preencher ficha', icon: Icons.assignment_outlined, onPressed: () => Navigator.pushReplacementNamed(context, AppRoutes.observation)),
-              CustomButton(label: 'Gerar relatorio', icon: Icons.description_outlined, onPressed: () => Navigator.pushReplacementNamed(context, AppRoutes.reports)),
-              CustomButton(label: 'Registrar encaminhamento', icon: Icons.send_outlined, onPressed: () => Navigator.pushReplacementNamed(context, AppRoutes.referrals)),
-              CustomButton(label: 'Anexar documento', icon: Icons.attach_file, onPressed: () => Navigator.pushReplacementNamed(context, AppRoutes.documents)),
+              CustomButton(
+                  label: 'Novo caso', icon: Icons.add, onPressed: () {}),
+              CustomButton(
+                  label: 'Preencher ficha',
+                  icon: Icons.assignment_outlined,
+                  onPressed: () => Navigator.pushReplacementNamed(
+                      context, AppRoutes.observation)),
+              CustomButton(
+                  label: 'Gerar relatorio',
+                  icon: Icons.description_outlined,
+                  onPressed: () => Navigator.pushReplacementNamed(
+                      context, AppRoutes.reports)),
+              CustomButton(
+                  label: 'Registrar encaminhamento',
+                  icon: Icons.send_outlined,
+                  onPressed: () => Navigator.pushReplacementNamed(
+                      context, AppRoutes.referrals)),
+              CustomButton(
+                  label: 'Anexar documento',
+                  icon: Icons.attach_file,
+                  onPressed: () => Navigator.pushReplacementNamed(
+                      context, AppRoutes.documents)),
             ],
           ),
         ),
@@ -117,7 +141,9 @@ class _Section extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+              Expanded(
+                  child: Text(title,
+                      style: Theme.of(context).textTheme.titleMedium)),
               if (trailing != null) trailing!,
             ],
           ),
@@ -138,7 +164,8 @@ class _CaseTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+      title:
+          Text(item.name, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 3),
         child: Text('${item.school}\n${item.stage} - ${item.updatedAt}'),
@@ -170,10 +197,17 @@ class _Distribution extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: [
-                    Container(width: 10, height: 10, decoration: BoxDecoration(color: item.$3, shape: BoxShape.circle)),
+                    Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                            color: item.$3, shape: BoxShape.circle)),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(item.$1, style: const TextStyle(color: AppColors.muted))),
-                    Text('${item.$2}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Expanded(
+                        child: Text(item.$1,
+                            style: const TextStyle(color: AppColors.muted))),
+                    Text('${item.$2}',
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),

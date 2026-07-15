@@ -16,14 +16,24 @@ class DocumentosScreen extends StatefulWidget {
 }
 
 class _DocumentosScreenState extends State<DocumentosScreen> {
-  static const categories = ['Todos', 'Laudos', 'Receitas', 'Exames', 'Relatorios', 'Encaminhamentos', 'Outros'];
+  static const categories = [
+    'Todos',
+    'Laudos',
+    'Receitas',
+    'Exames',
+    'Relatorios',
+    'Encaminhamentos',
+    'Outros'
+  ];
   String category = 'Todos';
   String query = '';
   bool gridMode = false;
 
   @override
   Widget build(BuildContext context) {
-    final filtered = MockData.documents.where((item) => item.matches(category, query)).toList();
+    final filtered = MockData.documents
+        .where((item) => item.matches(category, query))
+        .toList();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -32,7 +42,12 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
           subtitle: 'Lucas Oliveira - ${MockData.documents.length} documentos',
         ),
         const SizedBox(height: 14),
-        CustomButton(label: 'Anexar documento', icon: Icons.upload_file_outlined, primary: true, fullWidth: true, onPressed: () {}),
+        CustomButton(
+            label: 'Anexar documento',
+            icon: Icons.upload_file_outlined,
+            primary: true,
+            fullWidth: true,
+            onPressed: () {}),
         const SizedBox(height: 16),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -64,12 +79,15 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
             const SizedBox(width: 8),
             SegmentedButton<bool>(
               segments: const [
-                ButtonSegment(value: false, icon: Icon(Icons.view_list_outlined)),
-                ButtonSegment(value: true, icon: Icon(Icons.grid_view_outlined)),
+                ButtonSegment(
+                    value: false, icon: Icon(Icons.view_list_outlined)),
+                ButtonSegment(
+                    value: true, icon: Icon(Icons.grid_view_outlined)),
               ],
               selected: {gridMode},
               showSelectedIcon: false,
-              onSelectionChanged: (value) => setState(() => gridMode = value.first),
+              onSelectionChanged: (value) =>
+                  setState(() => gridMode = value.first),
             ),
           ],
         ),
@@ -90,12 +108,16 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
         else
           AppCard(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Column(children: filtered.map((item) => _DocumentTile(item: item)).toList()),
+            child: Column(
+                children:
+                    filtered.map((item) => _DocumentTile(item: item)).toList()),
           ),
         if (filtered.isEmpty)
           const Padding(
             padding: EdgeInsets.all(32),
-            child: Center(child: Text('Nenhum documento encontrado.', style: TextStyle(color: AppColors.muted))),
+            child: Center(
+                child: Text('Nenhum documento encontrado.',
+                    style: TextStyle(color: AppColors.muted))),
           ),
         const SizedBox(height: 24),
       ],
@@ -117,7 +139,8 @@ class _DocumentTile extends StatelessWidget {
         child: Icon(Icons.description_outlined, color: AppColors.primary),
       ),
       title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${item.type} - ${item.user}\n${item.date} - ${item.size}'),
+      subtitle:
+          Text('${item.type} - ${item.user}\n${item.date} - ${item.size}'),
       isThreeLine: true,
       trailing: PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
@@ -147,18 +170,33 @@ class _DocumentCard extends StatelessWidget {
             child: Icon(Icons.description_outlined, color: AppColors.primary),
           ),
           const SizedBox(height: 10),
-          Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(item.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 5),
-          Text('${item.type} - ${item.size}', style: Theme.of(context).textTheme.bodySmall),
-          Text(item.user, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+          Text('${item.type} - ${item.size}',
+              style: Theme.of(context).textTheme.bodySmall),
+          Text(item.user,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall),
           const Spacer(),
-          StatusBadge(label: item.validated ? 'Validado' : 'Pendente', tone: item.validated ? 'success' : 'warning'),
+          StatusBadge(
+              label: item.validated ? 'Validado' : 'Pendente',
+              tone: item.validated ? 'success' : 'warning'),
           const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              IconButton(onPressed: () {}, tooltip: 'Visualizar', icon: const Icon(Icons.visibility_outlined, size: 19)),
-              IconButton(onPressed: () {}, tooltip: 'Baixar', icon: const Icon(Icons.download_outlined, size: 19)),
+              IconButton(
+                  onPressed: () {},
+                  tooltip: 'Visualizar',
+                  icon: const Icon(Icons.visibility_outlined, size: 19)),
+              IconButton(
+                  onPressed: () {},
+                  tooltip: 'Baixar',
+                  icon: const Icon(Icons.download_outlined, size: 19)),
             ],
           ),
         ],

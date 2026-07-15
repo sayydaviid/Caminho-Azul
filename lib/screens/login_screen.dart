@@ -49,7 +49,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       const _Brand(),
                       const SizedBox(height: 26),
-                      Text('Perfil de acesso', style: Theme.of(context).textTheme.labelLarge),
+                      Text('Perfil de acesso',
+                          style: Theme.of(context).textTheme.labelLarge),
                       const SizedBox(height: 8),
                       GridView.count(
                         crossAxisCount: 2,
@@ -71,9 +72,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         label: 'Senha',
                         hint: 'Digite sua senha',
                         icon: Icons.lock_outline,
-                        suffixIcon: showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        suffixIcon: showPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
                         obscureText: !showPassword,
-                        onSuffixPressed: () => setState(() => showPassword = !showPassword),
+                        onSuffixPressed: () =>
+                            setState(() => showPassword = !showPassword),
                       ),
                       const SizedBox(height: 10),
                       Wrap(
@@ -86,12 +90,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             children: [
                               Checkbox(
                                 value: remember,
-                                onChanged: (value) => setState(() => remember = value ?? false),
+                                onChanged: (value) =>
+                                    setState(() => remember = value ?? false),
                               ),
-                              const Text('Lembrar acesso', style: TextStyle(color: AppColors.muted)),
+                              const Text('Lembrar acesso',
+                                  style: TextStyle(color: AppColors.muted)),
                             ],
                           ),
-                          TextButton(onPressed: () {}, child: const Text('Esqueci minha senha')),
+                          TextButton(
+                              onPressed: () {},
+                              child: const Text('Esqueci minha senha')),
                         ],
                       ),
                       const SizedBox(height: 14),
@@ -102,7 +110,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: _enter,
                       ),
                       const SizedBox(height: 10),
-                      CustomButton(label: 'Primeiro acesso', fullWidth: true, onPressed: () {}),
+                      CustomButton(
+                          label: 'Primeiro acesso',
+                          fullWidth: true,
+                          onPressed: () {}),
                     ],
                   ),
                 ),
@@ -125,19 +136,26 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: BoxDecoration(
           color: selected ? const Color(0xFFF4F8FF) : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 2 : 1),
+          border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+              width: selected ? 2 : 1),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(profile.$3, size: 20, color: selected ? AppColors.primary : AppColors.muted),
+            Icon(profile.$3,
+                size: 20,
+                color: selected ? AppColors.primary : AppColors.muted),
             const SizedBox(width: 7),
             Flexible(
               child: Text(
                 profile.$2,
                 maxLines: 2,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: selected ? AppColors.primary : AppColors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: selected ? AppColors.primary : AppColors.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -171,12 +189,16 @@ class _Brand extends StatelessWidget {
             color: const Color(0xFFDBEAFE),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Icon(Icons.extension_outlined, size: 32, color: AppColors.primary),
+          child: const Icon(Icons.extension_outlined,
+              size: 32, color: AppColors.primary),
         ),
         const SizedBox(height: 10),
         Text(
           'Caminho Azul',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.primary),
+          style: Theme.of(context)
+              .textTheme
+              .headlineSmall
+              ?.copyWith(color: AppColors.primary),
         ),
         const SizedBox(height: 5),
         const Text(

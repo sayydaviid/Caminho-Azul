@@ -20,12 +20,16 @@ class FamiliaScreen extends StatelessWidget {
               const CircleAvatar(
                 radius: 38,
                 backgroundColor: Color(0xFFDBEAFE),
-                child: Icon(Icons.person_outline, size: 40, color: AppColors.primary),
+                child: Icon(Icons.person_outline,
+                    size: 40, color: AppColors.primary),
               ),
               const SizedBox(height: 12),
-              Text('Lucas Oliveira', style: Theme.of(context).textTheme.headlineSmall),
+              Text('Lucas Oliveira',
+                  style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 4),
-              const Text('6 anos - EM Monteiro Lobato - 2o ano B', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
+              const Text('6 anos - EM Monteiro Lobato - 2o ano B',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted)),
               const SizedBox(height: 10),
               const StatusBadge(label: 'Em avaliacao'),
             ],
@@ -37,7 +41,8 @@ class FamiliaScreen extends StatelessWidget {
           title: 'Status do acompanhamento',
           child: Column(
             children: MockData.familyStatus
-                .map((item) => _StatusRow(item.label, item.value, _tone(item.tone)))
+                .map((item) =>
+                    _StatusRow(item.label, item.value, _tone(item.tone)))
                 .toList(),
           ),
         ),
@@ -50,8 +55,11 @@ class FamiliaScreen extends StatelessWidget {
                 .map(
                   (notice) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.circle, size: 10, color: AppColors.primary),
-                    title: Text(notice.text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    leading: const Icon(Icons.circle,
+                        size: 10, color: AppColors.primary),
+                    title: Text(notice.text,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w500)),
                     subtitle: Text(notice.date),
                     onTap: () {},
                   ),
@@ -67,8 +75,10 @@ class FamiliaScreen extends StatelessWidget {
             children: MockData.documents.take(4).map((document) {
               return ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.description_outlined, color: AppColors.primary),
-                title: Text(document.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                leading: const Icon(Icons.description_outlined,
+                    color: AppColors.primary),
+                title: Text(document.name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text('${document.type} - ${document.date}'),
                 trailing: const Icon(Icons.download_outlined),
               );
@@ -81,7 +91,8 @@ class FamiliaScreen extends StatelessWidget {
           title: 'Rede de assistencia',
           child: Column(
             children: MockData.familyNetwork
-                .map((item) => _NetworkCard(item.name, item.type, item.address, item.phone, item.hours))
+                .map((item) => _NetworkCard(
+                    item.name, item.type, item.address, item.phone, item.hours))
                 .toList(),
           ),
         ),
@@ -90,9 +101,18 @@ class FamiliaScreen extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            CustomButton(label: 'Enviar documentos', icon: Icons.upload_file_outlined, onPressed: () {}),
-            CustomButton(label: 'Atualizar dados', icon: Icons.refresh, onPressed: () {}),
-            CustomButton(label: 'Tirar duvidas', icon: Icons.chat_bubble_outline, onPressed: () {}),
+            CustomButton(
+                label: 'Enviar documentos',
+                icon: Icons.upload_file_outlined,
+                onPressed: () {}),
+            CustomButton(
+                label: 'Atualizar dados',
+                icon: Icons.refresh,
+                onPressed: () {}),
+            CustomButton(
+                label: 'Tirar duvidas',
+                icon: Icons.chat_bubble_outline,
+                onPressed: () {}),
           ],
         ),
         const SizedBox(height: 24),
@@ -111,7 +131,8 @@ class FamiliaScreen extends StatelessWidget {
 }
 
 class _FamilySection extends StatelessWidget {
-  const _FamilySection({required this.icon, required this.title, required this.child});
+  const _FamilySection(
+      {required this.icon, required this.title, required this.child});
 
   final IconData icon;
   final String title;
@@ -152,9 +173,14 @@ class _StatusRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted))),
+          Expanded(
+              child:
+                  Text(label, style: const TextStyle(color: AppColors.muted))),
           const SizedBox(width: 12),
-          Expanded(child: Text(value, textAlign: TextAlign.right, style: TextStyle(color: color, fontWeight: FontWeight.w600))),
+          Expanded(
+              child: Text(value,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w600))),
         ],
       ),
     );
@@ -162,7 +188,8 @@ class _StatusRow extends StatelessWidget {
 }
 
 class _NetworkCard extends StatelessWidget {
-  const _NetworkCard(this.name, this.type, this.address, this.phone, this.hours);
+  const _NetworkCard(
+      this.name, this.type, this.address, this.phone, this.hours);
 
   final String name;
   final String type;
@@ -184,10 +211,12 @@ class _NetworkCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text(type, style: const TextStyle(color: AppColors.primary, fontSize: 12)),
+          Text(type,
+              style: const TextStyle(color: AppColors.primary, fontSize: 12)),
           const SizedBox(height: 7),
           Text(address, style: const TextStyle(color: AppColors.muted)),
-          Text('$phone - $hours', style: const TextStyle(color: AppColors.muted)),
+          Text('$phone - $hours',
+              style: const TextStyle(color: AppColors.muted)),
         ],
       ),
     );
