@@ -1,0 +1,25 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "caminhoazul",
+          "appId": "1:1013291322411:android:dcbf7072b3975b3f802e6e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "caminhoazul",
+          "configurations": {
+            "android": "1:1013291322411:android:dcbf7072b3975b3f802e6e",
+            "web": "1:1013291322411:web:57f3fe63ef69118a802e6e"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

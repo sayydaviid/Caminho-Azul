@@ -1,0 +1,11 @@
+{
+  "name": "caminho-azul-admin-scripts",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "create:first-admin": "node create_first_admin.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../app/router.dart';
 import '../app/theme.dart';
+import '../services/auth_service.dart';
 import 'bottom_nav.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
     required this.currentRoute,
     required this.child,
+    this.authService,
+    this.displayName,
     super.key,
   });
 
   final String currentRoute;
   final Widget child;
+  final AuthService? authService;
+  final String? displayName;
 
   static const menuItems = [
     (AppRoutes.dashboard, Icons.dashboard_outlined, 'Dashboard'),
@@ -29,16 +34,20 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveDisplayName = displayName ?? 'Dra. Ana Silva';
+    final initials = _initialsFor(effectiveDisplayName);
+
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ola,',
+            const Text('Ola,',
                 style: TextStyle(fontSize: 12, color: AppColors.muted)),
-            Text('Dra. Ana Silva',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            Text(effectiveDisplayName,
+                style:
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           ],
         ),
         actions: [
@@ -53,13 +62,13 @@ class AppShell extends StatelessWidget {
                 tooltip: 'Notificacoes',
                 icon: const Icon(Icons.notifications_outlined)),
           ),
-          const Padding(
-            padding: EdgeInsets.only(right: 12),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
             child: CircleAvatar(
               radius: 17,
-              backgroundColor: Color(0xFFDBEAFE),
-              child: Text('AS',
-                  style: TextStyle(
+              backgroundColor: const Color(0xFFDBEAFE),
+              child: Text(initials,
+                  style: const TextStyle(
                       color: AppColors.primary,
                       fontSize: 12,
                       fontWeight: FontWeight.w700)),
@@ -127,8 +136,7 @@ class AppShell extends StatelessWidget {
                 leading: const Icon(Icons.logout, color: Color(0xFFD4DEEA)),
                 title: const Text('Sair',
                     style: TextStyle(color: Color(0xFFE2E8F0))),
-                onTap: () => Navigator.pushNamedAndRemoveUntil(
-                    context, AppRoutes.login, (_) => false),
+                onTap: () => _handleLogout(context),
               ),
             ],
           ),
@@ -144,5 +152,32 @@ class AppShell extends StatelessWidget {
 
   bool _isSelected(String route) {
     return currentRoute == route;
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    await authService?.signOut();
+
+    if (!context.mounted) {
+      return;
+    }
+
+    Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (_) => false);
+  }
+
+  String _initialsFor(String value) {
+    final parts = value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return 'CA';
+    }
+
+    final first = parts.first.characters.first.toUpperCase();
+    final second =
+        parts.length > 1 ? parts.last.characters.first.toUpperCase() : '';
+    return '$first$second';
   }
 }

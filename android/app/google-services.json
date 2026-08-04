@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1013291322411",
+    "project_id": "caminhoazul",
+    "storage_bucket": "caminhoazul.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1013291322411:android:dcbf7072b3975b3f802e6e",
+        "android_client_info": {
+          "package_name": "com.caminhoazul.caminho_azul"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgo1jfu6dH1phbqX9q2IUx0iGYBedFWlY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

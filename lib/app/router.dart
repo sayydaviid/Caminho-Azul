@@ -9,6 +9,8 @@ import '../screens/linha_tempo_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/relatorio_screen.dart';
 import '../screens/saude_screen.dart';
+import '../services/auth_service.dart';
+import '../widgets/admin_route_guard.dart';
 import '../widgets/app_shell.dart';
 
 abstract final class AppRoutes {
@@ -26,11 +28,29 @@ abstract final class AppRoutes {
 }
 
 abstract final class AppRouter {
-  static Route<dynamic> generateRoute(RouteSettings settings) {
+  static Route<dynamic> generateRoute(
+    RouteSettings settings, {
+    AuthService? authService,
+  }) {
+    final effectiveAuthService = authService ?? FirebaseAuthService();
+
     if (settings.name == AppRoutes.login) {
       return MaterialPageRoute<void>(
         settings: settings,
-        builder: (_) => const LoginScreen(),
+        builder: (_) => LoginScreen(authService: effectiveAuthService),
+      );
+    }
+
+    if (settings.name == AppRoutes.admin) {
+      return MaterialPageRoute<void>(
+        settings: settings,
+        builder: (_) => AdminRouteGuard(
+          authService: effectiveAuthService,
+          builder: (_, user) => AdminScreen(
+            user: user,
+            authService: effectiveAuthService,
+          ),
+        ),
       );
     }
 
@@ -41,7 +61,6 @@ abstract final class AppRouter {
       AppRoutes.timeline => const LinhaTempoScreen(),
       AppRoutes.documents => const DocumentosScreen(),
       AppRoutes.family => const FamiliaScreen(),
-      AppRoutes.admin => const AdminScreen(),
       _ => const DashboardScreen(),
     };
 
