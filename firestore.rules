@@ -2,36 +2,137 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
+    function isAuthenticated() {
       return request.auth != null;
     }
 
+    function currentUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActiveUser() {
+      return isAuthenticated()
+        && currentUserData().active == true;
+    }
+
     function isAdmin() {
-      return signedIn() && request.auth.token.role == 'admin';
+      return isActiveUser()
+        && currentUserData().role == 'admin';
     }
 
-    function isOwnProfile(uid) {
-      return signedIn() && request.auth.uid == uid;
+    function isValidRole(role) {
+      return role in ['admin', 'escola', 'familia', 'saude'];
     }
 
-    function protectedProfileFieldsUnchanged() {
-      return !request.resource.data
-        .diff(resource.data)
-        .affectedKeys()
-        .hasAny(['role', 'active', 'createdAt']);
+    function hasValidSchoolRole(data) {
+      return (
+          data.role == 'escola'
+          && data.get('schoolRole', null) in ['professor', 'direcao']
+        ) || (
+          data.role != 'escola'
+          && data.get('schoolRole', null) == null
+        );
+    }
+
+    function validNewUser() {
+      return request.resource.data.keys().hasAll([
+          'firstName', 'lastName', 'name', 'email', 'role', 'active',
+          'schoolRole', 'professionalId', 'createdAt', 'updatedAt', 'createdBy',
+          'lastAccessAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'firstName', 'lastName', 'name', 'email', 'role', 'active',
+          'schoolRole', 'professionalId', 'createdAt', 'updatedAt', 'createdBy',
+          'lastAccessAt'
+        ])
+        && request.resource.data.firstName is string
+        && request.resource.data.lastName is string
+        && request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.active is bool
+        && (request.resource.data.professionalId == null
+          || request.resource.data.professionalId is string)
+        && isValidRole(request.resource.data.role)
+        && hasValidSchoolRole(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.lastAccessAt == null;
+    }
+
+    function immutableCreationFields() {
+      return request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+    }
+
+    function creationFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['createdBy', 'createdAt']);
     }
 
     match /users/{uid} {
-      allow get: if isOwnProfile(uid) || isAdmin();
+      allow get: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
-      allow create: if false;
-      allow update: if (isOwnProfile(uid) || isAdmin())
-        && protectedProfileFieldsUnchanged();
+      allow create: if isAdmin() && validNewUser();
+      allow delete: if isAdmin() && request.auth.uid != uid;
+      allow update: if (
+          isActiveUser()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['lastAccessAt', 'updatedAt'])
+          && request.resource.data.updatedAt == request.time
+        ) || (
+          isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'firstName', 'lastName', 'name', 'role', 'active',
+              'schoolRole', 'professionalId', 'updatedAt'
+            ])
+          && isValidRole(request.resource.data.role)
+          && hasValidSchoolRole(request.resource.data)
+          && request.resource.data.active is bool
+          && (request.auth.uid != uid || (
+            request.resource.data.role == 'admin'
+            && request.resource.data.active == true
+          ))
+          && request.resource.data.updatedAt == request.time
+        );
+    }
+
+    match /institutions/{institutionId} {
+      allow read: if isAdmin() || (isActiveUser() && resource.data.active == true);
+      allow create: if isAdmin() && immutableCreationFields();
+      allow update: if isAdmin() && creationFieldsUnchanged();
       allow delete: if false;
     }
 
-    match /admin/{document=**} {
-      allow read, write: if isAdmin();
+    match /professionals/{professionalId} {
+      allow read: if isAdmin() || (isActiveUser() && resource.data.active == true);
+      allow create: if isAdmin() && immutableCreationFields();
+      allow update: if isAdmin() && creationFieldsUnchanged();
+      allow delete: if false;
+    }
+
+    match /localNetworks/{networkId} {
+      allow read: if isAdmin() || (isActiveUser() && resource.data.active == true);
+      allow create: if isAdmin() && immutableCreationFields();
+      allow update: if isAdmin() && creationFieldsUnchanged();
+      allow delete: if false;
+    }
+
+    match /adminParameters/{parameterId} {
+      allow read: if isActiveUser();
+      allow create: if isAdmin() && immutableCreationFields();
+      allow update: if isAdmin() && creationFieldsUnchanged();
+      allow delete: if false;
+    }
+
+    match /adminAuditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
     }
 
     match /{document=**} {
