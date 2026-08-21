@@ -9,9 +9,10 @@ import '../screens/linha_tempo_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/relatorio_screen.dart';
 import '../screens/saude_screen.dart';
+import '../repositories/admin_repository.dart';
 import '../services/auth_service.dart';
 import '../widgets/admin_route_guard.dart';
-import '../widgets/app_shell.dart';
+import '../widgets/authenticated_route_guard.dart';
 
 abstract final class AppRoutes {
   static const login = '/';
@@ -31,6 +32,7 @@ abstract final class AppRouter {
   static Route<dynamic> generateRoute(
     RouteSettings settings, {
     AuthService? authService,
+    AdminRepository? adminRepository,
   }) {
     final effectiveAuthService = authService ?? FirebaseAuthService();
 
@@ -49,6 +51,7 @@ abstract final class AppRouter {
           builder: (_, user) => AdminScreen(
             user: user,
             authService: effectiveAuthService,
+            repository: adminRepository,
           ),
         ),
       );
@@ -64,12 +67,25 @@ abstract final class AppRouter {
       _ => const DashboardScreen(),
     };
 
+    final route = settings.name ?? AppRoutes.dashboard;
     return MaterialPageRoute<void>(
       settings: settings,
-      builder: (_) => AppShell(
-        currentRoute: settings.name ?? AppRoutes.dashboard,
+      builder: (_) => AuthenticatedRouteGuard(
+        authService: effectiveAuthService,
+        currentRoute: route,
+        allowedRoles: _allowedRoles(route),
         child: child,
       ),
     );
   }
+
+  static Set<UserRole> _allowedRoles(String route) => switch (route) {
+        AppRoutes.family => {UserRole.family, UserRole.administration},
+        AppRoutes.health || AppRoutes.referrals => {
+            UserRole.health,
+            UserRole.administration,
+          },
+        AppRoutes.timeline || AppRoutes.documents => UserRole.values.toSet(),
+        _ => {UserRole.school, UserRole.administration},
+      };
 }

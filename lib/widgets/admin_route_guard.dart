@@ -39,6 +39,7 @@ class AdminRouteGuard extends StatelessWidget {
           currentRoute: AppRoutes.admin,
           authService: authService,
           displayName: user.name ?? user.email,
+          role: user.role,
           child: builder(context, user),
         );
       },
