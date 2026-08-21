@@ -325,7 +325,7 @@ abstract final class MockData {
         role: 'Admin',
         area: 'TI',
         institution: 'Secretaria',
-        profile: 'Administracao',
+        profile: 'Administração',
         active: true),
   ];
 
@@ -399,7 +399,7 @@ abstract final class MockData {
     ),
     (
       email: 'admin@caminhoazul.com',
-      profile: 'Administracao',
+      profile: 'Administração',
       lastAccess: '03/04/2026'
     ),
   ];
@@ -422,7 +422,7 @@ abstract final class MockData {
     ),
     (
       title: 'Perfis de acesso',
-      items: ['Escola', 'Familia', 'Saude', 'Administracao']
+      items: ['Escola', 'Familia', 'Saude', 'Administração']
     ),
     (
       title: 'Regras de notificacao',

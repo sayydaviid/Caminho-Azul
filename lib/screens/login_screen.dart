@@ -33,11 +33,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   static const profiles = [
     (AccessProfile.escola, 'Escola', Icons.school_outlined),
-    (AccessProfile.familia, 'Familia', Icons.favorite_outline),
-    (AccessProfile.saude, 'Saude', Icons.medical_services_outlined),
+    (AccessProfile.familia, 'Família', Icons.favorite_outline),
+    (AccessProfile.saude, 'Saúde', Icons.medical_services_outlined),
     (
       AccessProfile.administracao,
-      'Administracao',
+      'Administração',
       Icons.admin_panel_settings_outlined
     ),
   ];
@@ -81,9 +81,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         const _Brand(),
                         const SizedBox(height: 26),
-                        Text('Perfil de acesso',
-                            style: Theme.of(context).textTheme.labelLarge),
-                        const SizedBox(height: 8),
                         GridView.count(
                           crossAxisCount: 2,
                           shrinkWrap: true,
