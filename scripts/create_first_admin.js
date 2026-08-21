@@ -40,7 +40,10 @@ async function main() {
     profileRef.get(),
   );
   const now = admin.firestore.FieldValue.serverTimestamp();
+  const nameParts = name.split(/\s+/).filter(Boolean);
   const profile = {
+    firstName: nameParts.shift() || name,
+    lastName: nameParts.join(' '),
     name,
     email: user.email || email,
     role: 'admin',
@@ -50,6 +53,9 @@ async function main() {
 
   if (!profileSnapshot.exists) {
     profile.createdAt = now;
+    profile.createdBy = user.uid;
+    profile.professionalId = null;
+    profile.lastAccessAt = null;
   }
 
   await runStep('Firestore: criar ou atualizar perfil admin', () =>
