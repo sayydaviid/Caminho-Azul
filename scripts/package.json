@@ -3,9 +3,15 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "create:first-admin": "node create_first_admin.js"
+    "create:first-admin": "node create_first_admin.js",
+    "test": "npm run test:rules",
+    "test:rules": "firebase --config ../firebase.test.json emulators:exec --project demo-caminhoazul --only firestore \"node --test test/firestore.rules.test.js\""
   },
   "dependencies": {
     "firebase-admin": "^13.0.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.18.0"
   }
 }
