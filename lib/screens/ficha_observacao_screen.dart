@@ -253,7 +253,7 @@ class _MilestoneState extends State<_Milestone> {
               style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            initialValue: value,
+            value: value,
             items: ['Adequado', 'Em desenvolvimento', 'Requer atencao']
                 .map((item) => DropdownMenuItem(value: item, child: Text(item)))
                 .toList(),
