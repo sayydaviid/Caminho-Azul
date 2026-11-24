@@ -12,11 +12,21 @@ dependencies:
   firebase_core: ^4.12.1
   flutter:
     sdk: flutter
+  # Relatórios PDF gerados no aparelho (R-01..R-06): sem serviço externo.
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  # Web Share API do navegador para o PDF (já era dependência transitiva).
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
   flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
+  assets:
+    # Fontes do PDF com acentuação completa (Roboto, Apache 2.0).
+    - assets/fonts/
