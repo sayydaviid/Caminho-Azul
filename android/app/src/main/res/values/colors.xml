@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Azul da marca Caminho Azul (#2563EB), fundo do ícone adaptável. -->
+    <color name="ic_launcher_background">#2563EB</color>
+    <!-- Fundo do splash (mesmo fundo das telas, AppColors.background). -->
+    <color name="launch_background">#F8FAFC</color>
+</resources>
