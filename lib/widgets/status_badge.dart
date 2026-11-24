@@ -16,7 +16,7 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = _colors(tone);
+    final colors = statusBadgeColors(tone);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -43,24 +43,18 @@ class StatusBadge extends StatelessWidget {
     );
   }
 
-  (Color, Color) _colors(String value) {
-    return switch (value) {
-      'success' || 'Ativo' || 'Concluido' || 'Adequado' => (
-          const Color(0xFFD1FAE5),
-          AppColors.success,
-        ),
-      'warning' ||
-      'Pendente' ||
-      'Aguardando' ||
-      'Media' ||
-      'Requer atencao' =>
-        (
-          const Color(0xFFFEF3C7),
-          AppColors.warning,
-        ),
-      'danger' || 'Alta' => (const Color(0xFFFEE2E2), AppColors.danger),
-      'purple' || 'Novo' => (const Color(0xFFF3E8FF), AppColors.purple),
-      _ => (const Color(0xFFDBEAFE), AppColors.primary),
-    };
-  }
+}
+
+/// Fundo e texto dos selos (P2-02): texto escurecido para contraste WCAG AA
+/// (≥ 4,5:1 em texto de 12 px) sobre os fundos claros.
+(Color, Color) statusBadgeColors(String value) {
+  return switch (value) {
+    'success' || 'Ativo' || 'Concluido' || 'Adequado' =>
+      (const Color(0xFFD1FAE5), const Color(0xFF047857)),
+    'warning' || 'Pendente' || 'Aguardando' || 'Media' || 'Requer atencao' =>
+      (const Color(0xFFFEF3C7), const Color(0xFF92400E)),
+    'danger' || 'Alta' => (const Color(0xFFFEE2E2), const Color(0xFFB91C1C)),
+    'purple' || 'Novo' => (const Color(0xFFF3E8FF), AppColors.purple),
+    _ => (const Color(0xFFDBEAFE), const Color(0xFF1D4ED8)),
+  };
 }
