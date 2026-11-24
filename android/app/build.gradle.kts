@@ -20,8 +20,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.caminho_azul"
+        // Pacote registrado no Firebase (D-05). O namespace permanece com.example.caminho_azul.
+        applicationId = "com.caminhoazul.caminho_azul"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23
