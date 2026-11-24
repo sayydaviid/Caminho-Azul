@@ -7,7 +7,8 @@ enum AdminSection {
   professionals('Profissionais'),
   localNetwork('Rede local'),
   users('Usuários'),
-  parameters('Parâmetros');
+  parameters('Parâmetros'),
+  audit('Auditoria');
 
   const AdminSection(this.label);
   final String label;
@@ -29,6 +30,10 @@ class AdminUser {
     required this.role,
     required this.active,
     this.schoolRole,
+    this.healthRole,
+    this.needsNormalization = false,
+    this.institutionIds = const [],
+    this.studentIds = const [],
     this.professionalId,
     this.createdAt,
     this.updatedAt,
@@ -43,6 +48,13 @@ class AdminUser {
   final String email;
   final UserRole role;
   final SchoolRole? schoolRole;
+  final HealthRole? healthRole;
+
+  /// Perfil com valores antigos (português), ausentes ou incompletos. Não tem
+  /// acesso operacional até o admin salvar o cadastro com valores canônicos.
+  final bool needsNormalization;
+  final List<String> institutionIds;
+  final List<String> studentIds;
   final bool active;
   final String? professionalId;
   final DateTime? createdAt;
@@ -50,16 +62,32 @@ class AdminUser {
   final DateTime? lastAccessAt;
   final String? createdBy;
 
-  factory AdminUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? const <String, dynamic>{};
+  factory AdminUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) =>
+      AdminUser.fromMap(doc.id, doc.data() ?? const <String, dynamic>{});
+
+  factory AdminUser.fromMap(String id, Map<String, dynamic> data) {
     final fullName = _nullableText(data['name']) ?? '';
     final explicitFirst = _nullableText(data['firstName']);
     final explicitLast = _nullableText(data['lastName']);
     final parts =
         fullName.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
-    final role = UserRole.fromValue(data['role'] as String?) ?? UserRole.family;
+    final rawRole = data['role'] as String?;
+    final rawSchoolRole = data['schoolRole'] as String?;
+    final canonicalRole = UserRole.fromValue(rawRole);
+    final role =
+        canonicalRole ?? UserRole.fromLegacyValue(rawRole) ?? UserRole.family;
+    final canonicalSchoolRole = SchoolRole.fromValue(rawSchoolRole);
+    final schoolRole =
+        canonicalSchoolRole ?? SchoolRole.fromLegacyValue(rawSchoolRole);
+    final healthRole = HealthRole.fromValue(data['healthRole'] as String?);
+    final needsNormalization = canonicalRole == null ||
+        (role == UserRole.school && canonicalSchoolRole == null) ||
+        (role == UserRole.health && healthRole == null);
+    List<String> ids(Object? value) => List<String>.unmodifiable(
+          value is List ? value.whereType<String>() : const <String>[],
+        );
     return AdminUser(
-      id: doc.id,
+      id: id,
       firstName: explicitFirst ?? (parts.isEmpty ? '' : parts.first),
       lastName:
           explicitLast ?? (parts.length < 2 ? '' : parts.skip(1).join(' ')),
@@ -68,11 +96,13 @@ class AdminUser {
           : [explicitFirst, explicitLast].whereType<String>().join(' '),
       email: (_nullableText(data['email']) ?? '').toLowerCase(),
       role: role,
-      schoolRole: role == UserRole.school
-          ? SchoolRole.fromValue(data['schoolRole'] as String?) ??
-              SchoolRole.teacher
-          : null,
-      active: data['active'] != false,
+      schoolRole: role == UserRole.school ? schoolRole : null,
+      healthRole: role == UserRole.health ? healthRole : null,
+      needsNormalization: needsNormalization,
+      institutionIds: ids(data['institutionIds']),
+      studentIds: ids(data['studentIds']),
+      // Igual ao login e às regras: só `active == true` é ativo (P0-04).
+      active: data['active'] == true,
       professionalId: _nullableText(data['professionalId']),
       createdAt: _date(data['createdAt']),
       updatedAt: _date(data['updatedAt']),
@@ -81,9 +111,11 @@ class AdminUser {
     );
   }
 
-  String get accessLabel => role == UserRole.school
-      ? 'Escola • ${(schoolRole ?? SchoolRole.teacher).label}'
-      : role.label;
+  String get accessLabel {
+    final label =
+        accessLabelFor(role, schoolRole: schoolRole, healthRole: healthRole);
+    return needsNormalization ? '$label • Perfil a normalizar' : label;
+  }
 }
 
 class UserFormData {
@@ -94,7 +126,10 @@ class UserFormData {
     required this.role,
     required this.active,
     this.schoolRole,
+    this.healthRole,
     this.professionalId,
+    this.institutionIds = const [],
+    this.studentId,
   });
 
   final String firstName;
@@ -102,11 +137,58 @@ class UserFormData {
   final String email;
   final UserRole role;
   final SchoolRole? schoolRole;
+  final HealthRole? healthRole;
   final bool active;
   final String? professionalId;
 
+  /// Instituições de atuação (Escola/Saúde). Geram o cadastro profissional.
+  final List<String> institutionIds;
+
+  /// Estudante vinculado (Família, uma conta por estudante no MVP).
+  final String? studentId;
+
+  bool get isOperational =>
+      role == UserRole.school || role == UserRole.health;
+
+  /// Tipo de instituição aceito pelo perfil (D-A01).
+  InstitutionType? get requiredInstitutionType => switch (role) {
+        UserRole.school => InstitutionType.school,
+        UserRole.health => InstitutionType.ubs,
+        _ => null,
+      };
+
+  /// Vínculos obrigatórios por perfil (D-03, D-10).
+  /// Máximo de instituições por perfil (as regras verificam cada uma, P2-05).
+  static const maxInstitutions = 5;
+
+  String? get missingLinkMessage {
+    if (isOperational && institutionIds.isEmpty) {
+      return 'Selecione ao menos uma instituição de atuação.';
+    }
+    if (isOperational && institutionIds.length > maxInstitutions) {
+      return 'Selecione no máximo $maxInstitutions instituições de atuação.';
+    }
+    if (role == UserRole.family && studentId == null) {
+      return 'Selecione o estudante vinculado à conta familiar.';
+    }
+    return null;
+  }
+
   String get normalizedEmail => email.trim().toLowerCase();
   String get fullName => '${firstName.trim()} ${lastName.trim()}'.trim();
+
+  /// Subrole coerente com a role, sem padrão implícito (D-08).
+  String? get schoolRoleValue =>
+      role == UserRole.school ? schoolRole?.value : null;
+  String? get healthRoleValue =>
+      role == UserRole.health ? healthRole?.value : null;
+
+  /// Role exige subrole: Escola e Saúde não são salvas sem ela.
+  bool get hasRequiredSubrole => switch (role) {
+        UserRole.school => schoolRole != null,
+        UserRole.health => healthRole != null,
+        _ => true,
+      };
 
   Map<String, Object?> toCallableMap({String? uid}) => {
         if (uid != null) 'uid': uid,
@@ -114,9 +196,8 @@ class UserFormData {
         'lastName': lastName.trim(),
         'email': normalizedEmail,
         'role': role.value,
-        'schoolRole': role == UserRole.school
-            ? (schoolRole ?? SchoolRole.teacher).value
-            : null,
+        'schoolRole': schoolRoleValue,
+        'healthRole': healthRoleValue,
         'active': active,
         'professionalId': professionalId,
       };
@@ -171,6 +252,28 @@ class Address {
         [city, state].where((e) => e.isNotEmpty).join(' - '),
       ].where((e) => e.isNotEmpty).join(' • ');
 }
+
+/// Tipos controlados de instituição: as regras exigem `ubs` no destino dos
+/// encaminhamentos e `school` nos casos (P0-03).
+enum InstitutionType {
+  school('school', 'Escola'),
+  ubs('ubs', 'UBS');
+
+  const InstitutionType(this.value, this.label);
+  final String value;
+  final String label;
+
+  static InstitutionType? fromValue(String? value) {
+    for (final type in values) {
+      if (type.value == value) return type;
+    }
+    return null;
+  }
+}
+
+/// Rótulo em português; valores antigos em texto livre aparecem como estão.
+String institutionTypeLabel(String raw) =>
+    InstitutionType.fromValue(raw)?.label ?? (raw.isEmpty ? 'Sem tipo' : raw);
 
 class Institution {
   const Institution({
@@ -374,4 +477,64 @@ class AdminParameter {
       active: data['active'] != false,
     );
   }
+}
+
+/// Registro de `adminAuditLogs` exibido ao admin (P1-12). Os campos `before`
+/// e `after` não são mostrados: só o resumo da ação.
+class AuditEntry {
+  const AuditEntry({
+    required this.id,
+    required this.action,
+    required this.actorUid,
+    required this.targetType,
+    required this.targetId,
+    this.createdAt,
+  });
+
+  factory AuditEntry.fromMap(String id, Map<String, dynamic> data) {
+    return AuditEntry(
+      id: id,
+      action: data['action'] as String? ?? '',
+      actorUid: data['actorUid'] as String? ?? '',
+      targetType: data['targetType'] as String? ?? '',
+      targetId: data['targetId'] as String? ?? '',
+      createdAt: _date(data['createdAt']),
+    );
+  }
+
+  final String id;
+  final String action;
+  final String actorUid;
+  final String targetType;
+  final String targetId;
+  final DateTime? createdAt;
+
+  static const _actions = {
+    'user.create': 'Usuário criado',
+    'user.update': 'Usuário atualizado',
+    'user.role.update': 'Perfil de acesso alterado',
+    'user.activate': 'Usuário reativado',
+    'user.deactivate': 'Usuário desativado',
+    'association.update': 'Vínculo atualizado',
+    'institution.create': 'Instituição cadastrada',
+    'institution.update': 'Instituição atualizada',
+    'professional.create': 'Profissional cadastrado',
+    'professional.update': 'Profissional atualizado',
+    'localNetwork.create': 'Rede local cadastrada',
+    'localNetwork.update': 'Rede local atualizada',
+    'parameter.create': 'Parâmetro cadastrado',
+    'parameter.update': 'Parâmetro atualizado',
+  };
+
+  static const _targets = {
+    'user': 'Usuário',
+    'institution': 'Instituição',
+    'professional': 'Profissional',
+    'localNetwork': 'Rede local',
+    'parameter': 'Parâmetro',
+    'student': 'Estudante',
+  };
+
+  String get actionLabel => _actions[action] ?? action;
+  String get targetTypeLabel => _targets[targetType] ?? targetType;
 }

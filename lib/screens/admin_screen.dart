@@ -34,6 +34,7 @@ class _AdminScreenState extends State<AdminScreen> {
   late final AdminController _controller;
   Map<String, String> _institutionNames = const {};
   Map<String, String> _professionalNames = const {};
+  Map<String, String> _userNames = const {};
 
   @override
   void initState() {
@@ -42,7 +43,11 @@ class _AdminScreenState extends State<AdminScreen> {
       repository: widget.repository ?? FirebaseAdminRepository(),
       userService: widget.userService ?? FirebaseAdminUserService(),
       actorUid: widget.user.uid,
-    )..addListener(_refresh);
+    )
+      ..addListener(_refresh)
+      ..auditSearch = (item) => item is AuditEntry
+          ? [_userNames[item.actorUid] ?? '', _targetName(item)]
+          : const [];
     _refreshLookups();
   }
 
@@ -63,8 +68,12 @@ class _AdminScreenState extends State<AdminScreen> {
     try {
       final institutions = await _controller.institutions();
       final professionals = await _controller.professionals();
+      final users = await _controller.users();
       if (!mounted) return;
       setState(() {
+        _userNames = {
+          for (final item in users) item.id: item.name.isEmpty ? item.email : item.name
+        };
         _institutionNames = {
           for (final item in institutions) item.id: item.name
         };
@@ -101,7 +110,9 @@ class _AdminScreenState extends State<AdminScreen> {
           Expanded(
             child: FilledButton.icon(
               key: const Key('admin-new-button'),
-              onPressed: _openNew,
+              // A auditoria é somente leitura (P1-12).
+              onPressed:
+                  _controller.section == AdminSection.audit ? null : _openNew,
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Novo cadastro'),
             ),
@@ -115,7 +126,8 @@ class _AdminScreenState extends State<AdminScreen> {
             _controller.selectSection(section);
             if (section == AdminSection.professionals ||
                 section == AdminSection.users ||
-                section == AdminSection.localNetwork) {
+                section == AdminSection.localNetwork ||
+                section == AdminSection.audit) {
               _refreshLookups();
             }
           },
@@ -141,6 +153,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
   String get _searchHint => switch (_controller.section) {
         AdminSection.users => 'Buscar por nome ou e-mail...',
+        AdminSection.audit => 'Buscar por ação, autor ou alvo...',
         AdminSection.professionals =>
           'Buscar por nome, especialidade ou registro...',
         _ => 'Buscar por nome...',
@@ -186,6 +199,13 @@ class _AdminScreenState extends State<AdminScreen> {
           _cardFor(item),
           const SizedBox(height: 8),
         ],
+        if (_controller.canLoadMoreAudit)
+          OutlinedButton.icon(
+            key: const Key('admin-audit-load-more'),
+            onPressed: _controller.loadMoreAudit,
+            icon: const Icon(Icons.expand_more),
+            label: const Text('Carregar mais registros'),
+          ),
       ],
     );
   }
@@ -194,12 +214,15 @@ class _AdminScreenState extends State<AdminScreen> {
         Institution value => _recordCard(
             icon: Icons.apartment_outlined,
             title: value.name,
-            subtitle: [value.type, value.address.formatted, value.phone]
+            subtitle: [
+              value.address.formatted,
+              value.phone
+            ]
                 .whereType<String>()
                 .where((e) => e.isNotEmpty)
                 .join('\n'),
             active: value.active,
-            typeLabel: value.type,
+            typeLabel: institutionTypeLabel(value.type),
             onEdit: () => _openInstitution(value),
           ),
         Professional value => _recordCard(
@@ -247,8 +270,42 @@ class _AdminScreenState extends State<AdminScreen> {
             typeLabel: 'Parâmetro',
             onEdit: () => _openParameter(value),
           ),
+        AuditEntry value => AppCard(
+            key: Key('admin-audit-${value.id}'),
+            padding: const EdgeInsets.all(14),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const _LeadingIcon(icon: Icons.history),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(value.actionLabel,
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          '${value.targetTypeLabel}: ${_targetName(value)}',
+                          'Por: ${_userNames[value.actorUid] ?? value.actorUid}',
+                          'Em: ${formatDate(value.createdAt)}',
+                        ].join('\n'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ]),
+              ),
+            ]),
+          ),
         _ => const SizedBox.shrink(),
       };
+
+  String _targetName(AuditEntry value) =>
+      switch (value.targetType) {
+        'user' => _userNames[value.targetId],
+        'institution' => _institutionNames[value.targetId],
+        'professional' => _professionalNames[value.targetId],
+        _ => null,
+      } ??
+      value.targetId;
 
   Widget _recordCard({
     required IconData icon,
@@ -297,16 +354,20 @@ class _AdminScreenState extends State<AdminScreen> {
         AdminSection.localNetwork => _openLocalNetwork(null),
         AdminSection.users => _openUser(null),
         AdminSection.parameters => _openParameter(null),
+        AdminSection.audit => Future<void>.value(),
       };
 
   Future<void> _openUser(AdminUser? user) async {
     await _showLoadingForm(() async => UserForm(
           user: user,
           professionals: await _controller.professionals(),
-          institutions: await _controller.institutions(),
+          institutions: await _controller.activeInstitutions(),
+          students: await _controller.students(),
           currentUid: widget.user.uid,
           onSubmit: (value) => _controller.saveUser(user, value),
           onDelete: user == null ? null : () => _controller.deleteUser(user),
+          onResendActivation:
+              user == null ? null : () => _controller.resendActivation(user),
         ));
   }
 
@@ -445,6 +506,12 @@ class _AdminScreenState extends State<AdminScreen> {
             v.items.join('; '),
             v.active ? 'Ativo' : 'Inativo'
           ],
+        AuditEntry v => [
+            _controller.section.label,
+            v.actionLabel,
+            '${v.targetTypeLabel}: ${_targetName(v)} / ${_userNames[v.actorUid] ?? v.actorUid}',
+            formatDate(v.createdAt),
+          ],
         _ => const ['', '', '', ''],
       };
 
@@ -492,6 +559,7 @@ class _SectionPicker extends StatelessWidget {
         AdminSection.localNetwork => Icons.location_on_outlined,
         AdminSection.users => Icons.manage_accounts_outlined,
         AdminSection.parameters => Icons.settings_outlined,
+        AdminSection.audit => Icons.history,
       };
 }
 

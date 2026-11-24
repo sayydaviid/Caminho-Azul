@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/admin_models.dart';
+import '../models/student_models.dart';
 import '../services/auth_service.dart';
 
 class AdminRepositoryException implements Exception {
@@ -16,10 +17,14 @@ abstract interface class AdminRepository {
   Stream<List<LocalNetwork>> watchLocalNetworks();
   Stream<List<AdminUser>> watchUsers();
   Stream<List<AdminParameter>> watchParameters();
+
+  /// P1-12: consulta somente leitura da auditoria (mais recentes primeiro).
+  Stream<List<AuditEntry>> watchAuditLogs({int limit = 200});
   Future<List<Institution>> getActiveInstitutions();
   Future<List<Institution>> getInstitutions();
   Future<List<Professional>> getProfessionals();
   Future<List<AdminUser>> getUsers();
+  Future<List<Student>> getStudents();
   Future<void> createUserProfile(
     String uid,
     UserFormData value, {
@@ -69,6 +74,15 @@ class FirebaseAdminRepository implements AdminRepository {
       .collection('users')
       .snapshots()
       .map((event) => _sorted(event.docs.map(AdminUser.fromFirestore)));
+
+  @override
+  Stream<List<AuditEntry>> watchAuditLogs({int limit = 200}) => _firestore
+      .collection('adminAuditLogs')
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots()
+      .map((snapshot) => List.unmodifiable(snapshot.docs
+          .map((doc) => AuditEntry.fromMap(doc.id, doc.data()))));
 
   @override
   Stream<List<AdminParameter>> watchParameters() => _firestore
@@ -128,17 +142,38 @@ class FirebaseAdminRepository implements AdminRepository {
   }
 
   @override
+  Future<List<Student>> getStudents() async {
+    final snapshot = await _firestore.collection('students').get();
+    final list = snapshot.docs.map(Student.fromFirestore).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return List.unmodifiable(list);
+  }
+
+  @override
   Future<void> createUserProfile(
     String uid,
     UserFormData value, {
     required String actorUid,
   }) async {
+    _requireSubrole(value);
+    _requireLinks(value);
     final userRef = _firestore.collection('users').doc(uid);
     final existing = await userRef.get();
     if (existing.exists) {
       throw const AdminRepositoryException('Este usuário já está cadastrado.');
     }
-    await _validateUserProfessional(value.professionalId, uid);
+    if (value.isOperational) {
+      await _ensureActiveInstitutions(value.institutionIds,
+          type: value.requiredInstitutionType);
+    }
+    final batch = _firestore.batch();
+    String? professionalId;
+    if (value.isOperational) {
+      professionalId = _createProfessional(batch, uid, value, actorUid);
+    }
+    if (value.role == UserRole.family) {
+      await _linkStudent(batch, value.studentId!, uid, actorUid);
+    }
 
     final after = <String, Object?>{
       'firstName': value.firstName.trim(),
@@ -146,28 +181,24 @@ class FirebaseAdminRepository implements AdminRepository {
       'name': value.fullName,
       'email': value.normalizedEmail,
       'role': value.role.value,
-      'schoolRole': value.role == UserRole.school
-          ? (value.schoolRole ?? SchoolRole.teacher).value
-          : null,
+      'schoolRole': value.schoolRoleValue,
+      'healthRole': value.healthRoleValue,
       'active': value.active,
-      'professionalId': value.professionalId,
+      'professionalId': professionalId,
+      'institutionIds': value.isOperational ? value.institutionIds : <String>[],
+      'studentIds': value.role == UserRole.family
+          ? <String>[value.studentId!]
+          : <String>[],
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'createdBy': actorUid,
       'lastAccessAt': null,
     };
-    final batch = _firestore.batch()..set(userRef, after);
-    if (value.professionalId != null) {
-      batch.update(
-        _firestore.collection('professionals').doc(value.professionalId),
-        {
-          'userId': uid,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-      );
-    }
+    final auditId = _newAuditId();
+    batch.set(userRef, {...after, 'lastAuditId': auditId});
     _addAudit(
       batch,
+      id: auditId,
       action: 'user.create',
       actorUid: actorUid,
       targetType: 'user',
@@ -190,51 +221,92 @@ class FirebaseAdminRepository implements AdminRepository {
         'Você não pode desativar a própria conta nem remover sua role administrativa.',
       );
     }
+    _requireSubrole(value);
     if (value.normalizedEmail != user.email.trim().toLowerCase()) {
       throw const AdminRepositoryException(
         'O e-mail de uma conta existente não pode ser alterado sem um servidor administrativo.',
       );
     }
-    await _validateUserProfessional(value.professionalId, user.id);
+    _requireLinks(value);
+    if (value.isOperational) {
+      await _ensureActiveInstitutions(value.institutionIds,
+          type: value.requiredInstitutionType);
+    }
 
     final userRef = _firestore.collection('users').doc(user.id);
     final before = await userRef.get();
     if (!before.exists) {
       throw const AdminRepositoryException('Usuário não encontrado.');
     }
-    final oldProfessionalId = before.data()?['professionalId'] as String?;
+    final data = before.data() ?? const <String, dynamic>{};
+    final oldProfessionalId = data['professionalId'] as String?;
+    final oldStudentIds =
+        (data['studentIds'] as List? ?? const []).whereType<String>().toList();
+    final professionals = _firestore.collection('professionals');
+    final batch = _firestore.batch();
+    // P2-05: um log principal referenciado por lastAuditId; os complementares
+    // (role, status, vínculos) usam o mesmo id com sufixo.
+    final auditId = _newAuditId();
+
+    var professionalId = oldProfessionalId;
+    if (value.isOperational) {
+      if (oldProfessionalId == null) {
+        professionalId = _createProfessional(batch, user.id, value, actorUid);
+      } else {
+        batch.update(professionals.doc(oldProfessionalId), {
+          'firstName': value.firstName.trim(),
+          'lastName': value.lastName.trim(),
+          'name': value.fullName,
+          'userId': user.id,
+          'institutionIds': value.institutionIds,
+          'role': value.role.value,
+          'subrole': value.schoolRoleValue ?? value.healthRoleValue,
+          'active': value.active, // D-A06: acompanha a conta
+          'updatedAt': FieldValue.serverTimestamp(),
+          'lastAuditId': auditId,
+        });
+      }
+    } else if (oldProfessionalId != null) {
+      batch.update(professionals.doc(oldProfessionalId), {
+        'userId': null,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'lastAuditId': auditId,
+      });
+      professionalId = null;
+    }
+
+    final newStudentIds =
+        value.role == UserRole.family ? <String>[value.studentId!] : <String>[];
+    for (final studentId in oldStudentIds) {
+      if (newStudentIds.contains(studentId)) continue;
+      batch.update(_firestore.collection('students').doc(studentId), {
+        'familyUid': null,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': actorUid,
+      });
+    }
+    for (final studentId in newStudentIds) {
+      if (oldStudentIds.contains(studentId)) continue;
+      await _linkStudent(batch, studentId, user.id, actorUid);
+    }
+
     final after = <String, Object?>{
       'firstName': value.firstName.trim(),
       'lastName': value.lastName.trim(),
       'name': value.fullName,
       'role': value.role.value,
-      'schoolRole': value.role == UserRole.school
-          ? (value.schoolRole ?? SchoolRole.teacher).value
-          : null,
+      'schoolRole': value.schoolRoleValue,
+      'healthRole': value.healthRoleValue,
       'active': value.active,
-      'professionalId': value.professionalId,
+      'professionalId': professionalId,
+      'institutionIds': value.isOperational ? value.institutionIds : <String>[],
+      'studentIds': newStudentIds,
       'updatedAt': FieldValue.serverTimestamp(),
     };
-    final batch = _firestore.batch()..update(userRef, after);
-    if (oldProfessionalId != null &&
-        oldProfessionalId != value.professionalId) {
-      batch.update(
-          _firestore.collection('professionals').doc(oldProfessionalId), {
-        'userId': null,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    }
-    if (value.professionalId != null) {
-      batch.update(
-        _firestore.collection('professionals').doc(value.professionalId),
-        {
-          'userId': user.id,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-      );
-    }
+    batch.update(userRef, {...after, 'lastAuditId': auditId});
     _addAudit(
       batch,
+      id: auditId,
       action: 'user.update',
       actorUid: actorUid,
       targetType: 'user',
@@ -242,26 +314,33 @@ class FirebaseAdminRepository implements AdminRepository {
       before: before.data(),
       after: after,
     );
-    if (user.role != value.role || user.schoolRole != value.schoolRole) {
+    if (user.needsNormalization ||
+        user.role != value.role ||
+        user.schoolRole != value.schoolRole ||
+        user.healthRole != value.healthRole) {
       _addAudit(
         batch,
+        id: '$auditId-role',
         action: 'user.role.update',
         actorUid: actorUid,
         targetType: 'user',
         targetId: user.id,
         before: {
-          'role': user.role.value,
-          'schoolRole': user.schoolRole?.value,
+          'role': before.data()?['role'],
+          'schoolRole': before.data()?['schoolRole'],
+          'healthRole': before.data()?['healthRole'],
         },
         after: {
           'role': value.role.value,
-          'schoolRole': value.schoolRole?.value,
+          'schoolRole': value.schoolRoleValue,
+          'healthRole': value.healthRoleValue,
         },
       );
     }
     if (user.active != value.active) {
       _addAudit(
         batch,
+        id: '$auditId-active',
         action: value.active ? 'user.activate' : 'user.deactivate',
         actorUid: actorUid,
         targetType: 'user',
@@ -270,20 +349,36 @@ class FirebaseAdminRepository implements AdminRepository {
         after: {'active': value.active},
       );
     }
-    if (user.professionalId != value.professionalId) {
+    final oldInstitutions =
+        (data['institutionIds'] as List? ?? const []).whereType<String>();
+    if (oldProfessionalId != professionalId ||
+        oldInstitutions.join('|') != (after['institutionIds'] as List).join('|') ||
+        oldStudentIds.join('|') != newStudentIds.join('|')) {
       _addAudit(
         batch,
+        id: '$auditId-assoc',
         action: 'association.update',
         actorUid: actorUid,
         targetType: 'user',
         targetId: user.id,
-        before: {'professionalId': user.professionalId},
-        after: {'professionalId': value.professionalId},
+        before: {
+          'professionalId': oldProfessionalId,
+          'institutionIds': oldInstitutions.toList(),
+          'studentIds': oldStudentIds,
+        },
+        after: {
+          'professionalId': professionalId,
+          'institutionIds': after['institutionIds'],
+          'studentIds': newStudentIds,
+        },
       );
     }
     await batch.commit();
   }
 
+  /// "Excluir usuário" = desativação lógica (D-04, D-15): `active: false`,
+  /// histórico, vínculos e auditoria preservados; a identidade continua no
+  /// Authentication (remoção definitiva só manual, no Console).
   @override
   Future<void> deleteUser(
     AdminUser user, {
@@ -291,66 +386,43 @@ class FirebaseAdminRepository implements AdminRepository {
   }) async {
     if (user.id == actorUid) {
       throw const AdminRepositoryException(
-        'Você não pode excluir a própria conta administrativa.',
+        'Você não pode desativar a própria conta administrativa.',
       );
     }
-
     final userRef = _firestore.collection('users').doc(user.id);
     final before = await userRef.get();
     if (!before.exists) {
       throw const AdminRepositoryException('Usuário não encontrado.');
     }
-
-    final professionalId = before.data()?['professionalId'] as String?;
-    final professionals = _firestore.collection('professionals');
-    final linkedProfessionals =
-        await professionals.where('userId', isEqualTo: user.id).get();
-    final batch = _firestore.batch()..delete(userRef);
-    final unlinkedProfessionalIds = <String>{};
-    for (final professional in linkedProfessionals.docs) {
-      unlinkedProfessionalIds.add(professional.id);
-      batch.update(professional.reference, {
-        'userId': null,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      _addAudit(
-        batch,
-        action: 'association.delete',
-        actorUid: actorUid,
-        targetType: 'professional',
-        targetId: professional.id,
-        before: {'userId': user.id},
-        after: {'userId': null},
-      );
+    if (before.data()?['active'] != true) {
+      throw const AdminRepositoryException('Esta conta já está desativada.');
     }
-    if (professionalId != null &&
-        !unlinkedProfessionalIds.contains(professionalId)) {
-      final professionalRef = professionals.doc(professionalId);
-      final professional = await professionalRef.get();
-      if (professional.exists && professional.data()?['userId'] == user.id) {
-        batch.update(professionalRef, {
-          'userId': null,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        _addAudit(
-          batch,
-          action: 'association.delete',
-          actorUid: actorUid,
-          targetType: 'professional',
-          targetId: professionalId,
-          before: {'userId': user.id},
-          after: {'userId': null},
-        );
-      }
+    final auditId = _newAuditId();
+    final batch = _firestore.batch()
+      ..update(userRef, {
+        'active': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'lastAuditId': auditId,
+      });
+    // D-A06: o cadastro profissional acompanha a conta, para a pessoa sair
+    // das listas de atribuição (psicólogos) e de vínculo (professores).
+    final professionalId = before.data()?['professionalId'] as String?;
+    if (professionalId != null) {
+      batch.update(_firestore.collection('professionals').doc(professionalId), {
+        'active': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'lastAuditId': auditId,
+      });
     }
     _addAudit(
       batch,
-      action: 'user.delete',
+      id: auditId,
+      action: 'user.deactivate',
       actorUid: actorUid,
       targetType: 'user',
       targetId: user.id,
-      before: before.data(),
-      after: null,
+      before: {'active': true},
+      after: {'active': false, 'via': 'excluir-usuario'},
     );
     await batch.commit();
   }
@@ -363,9 +435,11 @@ class FirebaseAdminRepository implements AdminRepository {
     final collection = _firestore.collection('institutions');
     final ref = value.id.isEmpty ? collection.doc() : collection.doc(value.id);
     final before = await ref.get();
+    final auditId = _newAuditId();
     final data = <String, Object?>{
       ...value.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'lastAuditId': auditId,
       if (!before.exists) ...{
         'createdAt': FieldValue.serverTimestamp(),
         'createdBy': actorUid,
@@ -374,6 +448,7 @@ class FirebaseAdminRepository implements AdminRepository {
     final batch = _firestore.batch()..set(ref, data, SetOptions(merge: true));
     _addAudit(
       batch,
+      id: auditId,
       action: before.exists ? 'institution.update' : 'institution.create',
       actorUid: actorUid,
       targetType: 'institution',
@@ -389,7 +464,10 @@ class FirebaseAdminRepository implements AdminRepository {
     Professional value, {
     required String actorUid,
   }) async {
-    await _ensureActiveInstitutions(value.institutionIds);
+    if (value.institutionIds.length > maxInstitutionsPerProfile) {
+      throw const AdminRepositoryException(
+          'Selecione no máximo $maxInstitutionsPerProfile instituições.');
+    }
     final professionals = _firestore.collection('professionals');
     final ref =
         value.id.isEmpty ? professionals.doc() : professionals.doc(value.id);
@@ -422,6 +500,19 @@ class FirebaseAdminRepository implements AdminRepository {
         'Este usuário já está vinculado a outro profissional.',
       );
     }
+    // D-A01 / P2-05: tipo de instituição conforme a role da conta.
+    final role = userData['role'] as String?;
+    final subrole = role == 'school'
+        ? userData['schoolRole'] as String?
+        : role == 'health'
+            ? userData['healthRole'] as String?
+            : null;
+    await _ensureActiveInstitutions(value.institutionIds,
+        type: role == 'school'
+            ? InstitutionType.school
+            : role == 'health'
+                ? InstitutionType.ubs
+                : null);
 
     String text(Object? field) => field is String ? field.trim() : '';
     final storedName = text(userData['name']);
@@ -450,11 +541,16 @@ class FirebaseAdminRepository implements AdminRepository {
       'name': fullName,
       'email': email,
       'userId': nextUserId,
+      // Mesma função da conta: as listas de professores e psicólogos usam
+      // role/subrole do profissional (as regras conferem).
+      if (subrole != null) ...{'role': role, 'subrole': subrole},
     };
 
+    final auditId = _newAuditId();
     final data = <String, Object?>{
       ...professionalData,
       'updatedAt': FieldValue.serverTimestamp(),
+      'lastAuditId': auditId,
       if (!before.exists) ...{
         'createdAt': FieldValue.serverTimestamp(),
         'createdBy': actorUid,
@@ -464,15 +560,20 @@ class FirebaseAdminRepository implements AdminRepository {
     if (previousUserId != null && previousUserId != nextUserId) {
       batch.update(_firestore.collection('users').doc(previousUserId), {
         'professionalId': null,
+        'institutionIds': <String>[],
         'updatedAt': FieldValue.serverTimestamp(),
+        'lastAuditId': auditId,
       });
     }
     batch.update(_firestore.collection('users').doc(nextUserId), {
       'professionalId': ref.id,
+      'institutionIds': value.institutionIds,
       'updatedAt': FieldValue.serverTimestamp(),
+      'lastAuditId': auditId,
     });
     _addAudit(
       batch,
+      id: auditId,
       action: before.exists ? 'professional.update' : 'professional.create',
       actorUid: actorUid,
       targetType: 'professional',
@@ -492,9 +593,11 @@ class FirebaseAdminRepository implements AdminRepository {
     final collection = _firestore.collection('localNetworks');
     final ref = value.id.isEmpty ? collection.doc() : collection.doc(value.id);
     final before = await ref.get();
+    final auditId = _newAuditId();
     final data = <String, Object?>{
       ...value.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'lastAuditId': auditId,
       if (!before.exists) ...{
         'createdAt': FieldValue.serverTimestamp(),
         'createdBy': actorUid,
@@ -503,6 +606,7 @@ class FirebaseAdminRepository implements AdminRepository {
     final batch = _firestore.batch()..set(ref, data, SetOptions(merge: true));
     _addAudit(
       batch,
+      id: auditId,
       action: before.exists ? 'localNetwork.update' : 'localNetwork.create',
       actorUid: actorUid,
       targetType: 'localNetwork',
@@ -526,12 +630,14 @@ class FirebaseAdminRepository implements AdminRepository {
       'items': value.items,
       'active': value.active,
     };
+    final auditId = _newAuditId();
     final batch = _firestore.batch()
       ..set(
           ref,
           {
             ...after,
             'updatedAt': FieldValue.serverTimestamp(),
+            'lastAuditId': auditId,
             if (!before.exists) ...{
               'createdAt': FieldValue.serverTimestamp(),
               'createdBy': actorUid,
@@ -540,6 +646,7 @@ class FirebaseAdminRepository implements AdminRepository {
           SetOptions(merge: true));
     _addAudit(
       batch,
+      id: auditId,
       action: before.exists ? 'parameter.update' : 'parameter.create',
       actorUid: actorUid,
       targetType: 'parameter',
@@ -550,7 +657,16 @@ class FirebaseAdminRepository implements AdminRepository {
     await batch.commit();
   }
 
-  Future<void> _ensureActiveInstitutions(List<String> ids) async {
+  void _requireSubrole(UserFormData value) {
+    if (!value.hasRequiredSubrole) {
+      throw const AdminRepositoryException(
+        'Selecione a função do usuário na Escola ou na Saúde.',
+      );
+    }
+  }
+
+  Future<void> _ensureActiveInstitutions(List<String> ids,
+      {InstitutionType? type}) async {
     if (ids.isEmpty) return;
     final docs = await Future.wait(
       ids.map((id) => _firestore.collection('institutions').doc(id).get()),
@@ -560,30 +676,97 @@ class FirebaseAdminRepository implements AdminRepository {
         'Uma das instituições selecionadas não está mais ativa.',
       );
     }
+    // D-A01: Escola só atua em escolas; Saúde só em UBS.
+    if (type != null && docs.any((doc) => doc.data()?['type'] != type.value)) {
+      throw AdminRepositoryException(type == InstitutionType.school
+          ? 'Perfis da Escola só podem ser vinculados a escolas.'
+          : 'Perfis da Saúde só podem ser vinculados a UBS.');
+    }
   }
 
-  Future<void> _validateUserProfessional(
-    String? professionalId,
-    String uid,
-  ) async {
-    if (professionalId == null) return;
-    final professional =
-        await _firestore.collection('professionals').doc(professionalId).get();
-    if (!professional.exists || professional.data()?['active'] != true) {
-      throw const AdminRepositoryException(
-        'Selecione um profissional existente e ativo.',
-      );
-    }
-    final linkedUid = professional.data()?['userId'] as String?;
-    if (linkedUid != null && linkedUid != uid) {
-      throw const AdminRepositoryException(
-        'Este profissional já está vinculado a outro usuário.',
-      );
-    }
+  void _requireLinks(UserFormData value) {
+    final message = value.missingLinkMessage;
+    if (message != null) throw AdminRepositoryException(message);
   }
+
+  /// Limite imposto pelas regras (verificação de tipo por índice, P2-05).
+  static const maxInstitutionsPerProfile = UserFormData.maxInstitutions;
+
+  /// Cadastro profissional obrigatório de contas da Escola e da Saúde (D-03).
+  String _createProfessional(
+    WriteBatch batch,
+    String uid,
+    UserFormData value,
+    String actorUid,
+  ) {
+    final ref = _firestore.collection('professionals').doc();
+    final auditId = _newAuditId();
+    final data = <String, Object?>{
+      'firstName': value.firstName.trim(),
+      'lastName': value.lastName.trim(),
+      'name': value.fullName,
+      'email': value.normalizedEmail,
+      'phone': null,
+      'specialty': null,
+      'registrationNumber': null,
+      'userId': uid,
+      'institutionIds': value.institutionIds,
+      // Função copiada do perfil: permite listar professores e psicólogos.
+      'role': value.role.value,
+      'subrole': value.schoolRoleValue ?? value.healthRoleValue,
+      'active': value.active, // D-A06: acompanha a conta
+    };
+    batch.set(ref, {
+      ...data,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'createdBy': actorUid,
+      'lastAuditId': auditId,
+    });
+    _addAudit(
+      batch,
+      id: auditId,
+      action: 'professional.create',
+      actorUid: actorUid,
+      targetType: 'professional',
+      targetId: ref.id,
+      before: null,
+      after: data,
+    );
+    return ref.id;
+  }
+
+  /// Uma conta familiar por estudante (D-10).
+  Future<void> _linkStudent(
+    WriteBatch batch,
+    String studentId,
+    String familyUid,
+    String actorUid,
+  ) async {
+    final ref = _firestore.collection('students').doc(studentId);
+    final student = await ref.get();
+    if (!student.exists) {
+      throw const AdminRepositoryException('Estudante não encontrado.');
+    }
+    final current = student.data()?['familyUid'] as String?;
+    if (current != null && current != familyUid) {
+      throw const AdminRepositoryException(
+        'Este estudante já possui uma conta familiar vinculada.',
+      );
+    }
+    batch.update(ref, {
+      'familyUid': familyUid,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedBy': actorUid,
+    });
+  }
+
+  /// Id de log sem hífen (as regras aceitam os sufixos -role/-active/-assoc).
+  String _newAuditId() => _firestore.collection('adminAuditLogs').doc().id;
 
   void _addAudit(
     WriteBatch batch, {
+    required String id,
     required String action,
     required String actorUid,
     required String targetType,
@@ -591,7 +774,7 @@ class FirebaseAdminRepository implements AdminRepository {
     required Map<String, dynamic>? before,
     required Map<String, Object?>? after,
   }) {
-    final ref = _firestore.collection('adminAuditLogs').doc();
+    final ref = _firestore.collection('adminAuditLogs').doc(id);
     batch.set(ref, {
       'action': action,
       'actorUid': actorUid,

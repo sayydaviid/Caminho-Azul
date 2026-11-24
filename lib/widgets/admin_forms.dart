@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/theme.dart';
 import '../models/admin_models.dart';
+import '../models/student_models.dart';
 import '../repositories/admin_repository.dart';
 import '../services/auth_service.dart';
 
@@ -29,17 +30,23 @@ class UserForm extends StatefulWidget {
     required this.institutions,
     required this.currentUid,
     required this.onSubmit,
+    this.students = const [],
     this.user,
     this.onDelete,
+    this.onResendActivation,
     super.key,
   });
 
   final AdminUser? user;
   final List<Professional> professionals;
   final List<Institution> institutions;
+  final List<Student> students;
   final String currentUid;
   final UserSubmit onSubmit;
   final UserDelete? onDelete;
+
+  /// Reenvia o e-mail de ativação (definição de senha) para a conta editada.
+  final Future<String> Function()? onResendActivation;
 
   @override
   State<UserForm> createState() => _UserFormState();
@@ -51,12 +58,43 @@ class _UserFormState extends State<UserForm> {
   late final TextEditingController _email;
   late UserRole _role;
   SchoolRole? _schoolRole;
+  HealthRole? _healthRole;
   late bool _active;
   String? _professionalId;
+  late Set<String> _institutionIds;
+  String? _studentId;
   bool _saving = false;
   bool _deleting = false;
+  bool _resending = false;
 
   bool get _isSelf => widget.user?.id == widget.currentUid;
+
+  /// D-A01: Escola atua em escolas; Saúde, em UBS.
+  List<Institution> get _allowedInstitutions {
+    final type = switch (_role) {
+      UserRole.school => InstitutionType.school.value,
+      UserRole.health => InstitutionType.ubs.value,
+      _ => null,
+    };
+    return widget.institutions.where((e) => e.type == type).toList();
+  }
+
+  Future<void> _resendActivation() async {
+    final send = widget.onResendActivation;
+    if (send == null || _resending) return;
+    setState(() => _resending = true);
+    try {
+      final message = await send();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (mounted) showFormError(context, error);
+    } finally {
+      if (mounted) setState(() => _resending = false);
+    }
+  }
 
   @override
   void initState() {
@@ -72,8 +110,19 @@ class _UserFormState extends State<UserForm> {
     _email = TextEditingController(text: value?.email);
     _role = value?.role ?? UserRole.family;
     _schoolRole = value?.schoolRole;
+    _healthRole = value?.healthRole;
     _active = value?.active ?? true;
     _professionalId = value?.professionalId;
+    _institutionIds = {...?value?.institutionIds};
+    if (_institutionIds.isEmpty && value?.professionalId != null) {
+      _institutionIds = {
+        ...?widget.professionals
+            .where((item) => item.id == value!.professionalId)
+            .firstOrNull
+            ?.institutionIds,
+      };
+    }
+    _studentId = value?.studentIds.firstOrNull;
   }
 
   @override
@@ -88,12 +137,6 @@ class _UserFormState extends State<UserForm> {
     final selectedProfessional = widget.professionals
         .where((item) => item.id == _professionalId)
         .firstOrNull;
-    final institutionNames = selectedProfessional?.institutionIds
-            .map((id) =>
-                widget.institutions.where((i) => i.id == id).firstOrNull?.name)
-            .whereType<String>()
-            .toList() ??
-        const <String>[];
     return AdminFormScaffold(
       title: widget.user == null ? 'Novo usuário' : 'Editar usuário',
       saving: _saving || _deleting,
@@ -138,46 +181,64 @@ class _UserFormState extends State<UserForm> {
               fieldKey: const Key('admin-form-role'),
               role: _role,
               schoolRole: _schoolRole,
+              healthRole: _healthRole,
               enabled: !_saving && !_isSelf,
               onChanged: (selection) => setState(() {
                 _role = selection.role;
                 _schoolRole = selection.schoolRole;
+                _healthRole = selection.healthRole;
+                // Mantém só instituições compatíveis com o novo perfil.
+                final allowed = _allowedInstitutions.map((e) => e.id).toSet();
+                _institutionIds = _institutionIds.intersection(allowed);
               }),
             ),
             const SizedBox(height: 10),
-            DropdownButtonFormField<String?>(
-              key: const Key('admin-form-professional'),
-              value: _professionalId,
-              isExpanded: true,
-              decoration:
-                  const InputDecoration(labelText: 'Profissional vinculado'),
-              items: [
-                const DropdownMenuItem<String?>(
-                    value: null, child: Text('Nenhum')),
-                for (final item in widget.professionals)
-                  if (item.active || item.id == widget.user?.professionalId)
-                    DropdownMenuItem<String?>(
-                      value: item.id,
-                      enabled: item.active &&
-                          (item.userId == null ||
-                              item.userId == widget.user?.id),
-                      child: Text(item.name, overflow: TextOverflow.ellipsis),
-                    ),
-              ],
-              onChanged: _saving
-                  ? null
-                  : (value) => setState(() => _professionalId = value),
-            ),
-            if (institutionNames.isNotEmpty) ...[
-              const SizedBox(height: 8),
+            if (_role == UserRole.school || _role == UserRole.health) ...[
+              InstitutionPicker(
+                key: const Key('admin-form-institutions'),
+                label: _role == UserRole.school
+                    ? 'Escolas de atuação *'
+                    : 'UBS de atuação *',
+                institutions: _allowedInstitutions,
+                selectedIds: _institutionIds,
+                onChanged: (ids) => setState(() => _institutionIds = ids),
+              ),
+              const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Instituições: ${institutionNames.join(', ')}',
+                  selectedProfessional == null
+                      ? 'O cadastro profissional será criado automaticamente.'
+                      : 'Profissional vinculado: ${selectedProfessional.name}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
             ],
+            if (_role == UserRole.family)
+              DropdownButtonFormField<String?>(
+                key: const Key('admin-form-student'),
+                value: widget.students.any((item) => item.id == _studentId)
+                    ? _studentId
+                    : null,
+                isExpanded: true,
+                decoration:
+                    const InputDecoration(labelText: 'Estudante vinculado *'),
+                items: [
+                  for (final item in widget.students)
+                    DropdownMenuItem<String?>(
+                      value: item.id,
+                      enabled: item.active &&
+                          (item.familyUid == null ||
+                              item.familyUid == widget.user?.id),
+                      child: Text(item.label, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                validator: (value) =>
+                    value == null ? 'Selecione o estudante.' : null,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _studentId = value),
+              ),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Usuário ativo'),
@@ -189,6 +250,18 @@ class _UserFormState extends State<UserForm> {
                   ? null
                   : (value) => setState(() => _active = value),
             ),
+            if (widget.user != null && widget.onResendActivation != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('admin-form-resend-activation'),
+                  onPressed: _saving || _resending ? null : _resendActivation,
+                  icon: const Icon(Icons.mark_email_read_outlined),
+                  label: Text(_resending
+                      ? 'Enviando...'
+                      : 'Reenviar e-mail de ativação'),
+                ),
+              ),
             if (widget.user != null) ...[
               const Divider(),
               _InfoLine('Criado em', formatDate(widget.user!.createdAt)),
@@ -204,10 +277,22 @@ class _UserFormState extends State<UserForm> {
     if (_saving || _deleting || !(_key.currentState?.validate() ?? false)) {
       return;
     }
+    final missingSubrole = (_role == UserRole.school && _schoolRole == null) ||
+        (_role == UserRole.health && _healthRole == null);
+    if (missingSubrole) {
+      showFormError(context, 'Selecione a função do usuário na Escola ou na Saúde.');
+      return;
+    }
+    final operational = _role == UserRole.school || _role == UserRole.health;
+    if (operational && _institutionIds.isEmpty) {
+      showFormError(context, 'Selecione ao menos uma instituição de atuação.');
+      return;
+    }
     final old = widget.user;
     if (old != null &&
         (old.role != _role ||
             old.schoolRole != _schoolRole ||
+            old.healthRole != _healthRole ||
             old.active != _active)) {
       final confirmed = await confirmImportantChange(context);
       if (!confirmed) return;
@@ -224,9 +309,12 @@ class _UserFormState extends State<UserForm> {
         lastName: nameParts.skip(1).join(' '),
         email: _email.text,
         role: _role,
-        schoolRole: _role == UserRole.school
-            ? (_schoolRole ?? SchoolRole.teacher)
-            : null,
+        schoolRole: _role == UserRole.school ? _schoolRole : null,
+        healthRole: _role == UserRole.health ? _healthRole : null,
+        institutionIds: operational
+            ? _institutionIds.toList(growable: false)
+            : const <String>[],
+        studentId: _role == UserRole.family ? _studentId : null,
         active: _active,
         professionalId: _professionalId,
       ));
@@ -258,8 +346,10 @@ class _UserFormState extends State<UserForm> {
           builder: (context) => AlertDialog(
             title: const Text('Excluir usuário?'),
             content: Text(
-              'O acesso de ${user.name.isEmpty ? user.email : user.name} será removido imediatamente e o vínculo profissional será desfeito.\n\n'
-              'O registro de autenticação continuará no Firebase, mas não conseguirá acessar o aplicativo. Esta ação não pode ser desfeita pelo painel.',
+              'A conta de ${user.name.isEmpty ? user.email : user.name} será DESATIVADA, não excluída permanentemente: '
+              'o acesso ao aplicativo e aos dados é bloqueado imediatamente, e o histórico e a auditoria são preservados.\n\n'
+              'A identidade continua no Firebase Authentication; se necessário, a exclusão definitiva é feita manualmente no Console do Firebase por um responsável autorizado. '
+              'A conta pode ser reativada pelo painel.',
             ),
             actions: [
               TextButton(
@@ -272,7 +362,7 @@ class _UserFormState extends State<UserForm> {
                   backgroundColor: Theme.of(context).colorScheme.error,
                 ),
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Excluir'),
+                child: const Text('Desativar conta'),
               ),
             ],
           ),
@@ -292,11 +382,18 @@ class _UserFormState extends State<UserForm> {
   }
 }
 
+typedef RoleSelection = ({
+  UserRole role,
+  SchoolRole? schoolRole,
+  HealthRole? healthRole,
+});
+
 class _RolePickerField extends StatelessWidget {
   const _RolePickerField({
     required this.fieldKey,
     required this.role,
     required this.schoolRole,
+    required this.healthRole,
     required this.enabled,
     required this.onChanged,
   });
@@ -304,8 +401,13 @@ class _RolePickerField extends StatelessWidget {
   final Key fieldKey;
   final UserRole role;
   final SchoolRole? schoolRole;
+  final HealthRole? healthRole;
   final bool enabled;
-  final ValueChanged<({UserRole role, SchoolRole? schoolRole})> onChanged;
+  final ValueChanged<RoleSelection> onChanged;
+
+  bool get _missingSubrole =>
+      (role == UserRole.school && schoolRole == null) ||
+      (role == UserRole.health && healthRole == null);
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -321,9 +423,10 @@ class _RolePickerField extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  role == UserRole.school
-                      ? 'Escola • ${(schoolRole ?? SchoolRole.teacher).label}'
-                      : role.label,
+                  _missingSubrole
+                      ? '${role.label} • selecione a função'
+                      : accessLabelFor(role,
+                          schoolRole: schoolRole, healthRole: healthRole),
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
@@ -336,7 +439,7 @@ class _RolePickerField extends StatelessWidget {
   Future<void> _selectRole(BuildContext context) async {
     FocusManager.instance.primaryFocus?.unfocus();
     final selected =
-        await showModalBottomSheet<({UserRole role, SchoolRole? schoolRole})>(
+        await showModalBottomSheet<RoleSelection>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,
@@ -379,7 +482,31 @@ class _RolePickerField extends StatelessWidget {
                   ),
                   onTap: () => Navigator.pop(
                     sheetContext,
-                    (role: UserRole.school, schoolRole: item),
+                    (role: UserRole.school, schoolRole: item, healthRole: null),
+                  ),
+                ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                child: Text(
+                  'Saúde',
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
+              ),
+              for (final item in HealthRole.values)
+                ListTile(
+                  key: Key('admin-health-role-option-${item.value}'),
+                  title: Text(item.label),
+                  selected: role == UserRole.health && healthRole == item,
+                  trailing: role == UserRole.health && healthRole == item
+                      ? const Icon(Icons.check_circle_outline)
+                      : null,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    (role: UserRole.health, schoolRole: null, healthRole: item),
                   ),
                 ),
               const Divider(),
@@ -391,7 +518,7 @@ class _RolePickerField extends StatelessWidget {
                 ),
               ),
               for (final item in UserRole.values)
-                if (item != UserRole.school)
+                if (item != UserRole.school && item != UserRole.health)
                   ListTile(
                     key: Key('admin-role-option-${item.value}'),
                     title: Text(item.label),
@@ -404,7 +531,7 @@ class _RolePickerField extends StatelessWidget {
                     ),
                     onTap: () => Navigator.pop(
                       sheetContext,
-                      (role: item, schoolRole: null),
+                      (role: item, schoolRole: null, healthRole: null),
                     ),
                   ),
             ],
@@ -428,16 +555,22 @@ class _InstitutionFormState extends State<InstitutionForm> {
   final _key = GlobalKey<FormState>();
   late final Map<String, TextEditingController> _fields;
   late bool _active;
+  InstitutionType? _type;
   bool _saving = false;
+
+  /// Instituição existente com tipo canônico: o tipo fica fixo (P2-05).
+  bool get _typeLocked =>
+      (widget.institution?.id ?? '').isNotEmpty &&
+      InstitutionType.fromValue(widget.institution?.type) != null;
 
   @override
   void initState() {
     super.initState();
     final v = widget.institution;
     _active = v?.active ?? true;
+    _type = InstitutionType.fromValue(v?.type);
     _fields = {
       'name': TextEditingController(text: v?.name),
-      'type': TextEditingController(text: v?.type),
       'cnpj': TextEditingController(text: v?.cnpj),
       'email': TextEditingController(text: v?.email),
       'phone': TextEditingController(text: v?.phone),
@@ -472,7 +605,32 @@ class _InstitutionFormState extends State<InstitutionForm> {
             children: [
               _field('name', 'Nome *',
                   key: const Key('admin-form-name'), required: true),
-              _field('type', 'Tipo *', required: true),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: DropdownButtonFormField<InstitutionType>(
+                  key: const Key('admin-form-type'),
+                  value: _type,
+                  decoration: InputDecoration(
+                    labelText: 'Tipo *',
+                    helperText: _type == null &&
+                            (widget.institution?.type ?? '').isNotEmpty
+                        ? 'Tipo anterior: ${widget.institution!.type}. Selecione Escola ou UBS.'
+                        : _typeLocked
+                            ? 'O tipo não muda depois do cadastro (vínculos de perfis).'
+                            : null,
+                  ),
+                  items: [
+                    for (final type in InstitutionType.values)
+                      DropdownMenuItem(value: type, child: Text(type.label)),
+                  ],
+                  validator: (value) =>
+                      value == null ? 'Selecione o tipo.' : null,
+                  // P2-05: tipo canônico é imutável (as regras recusam a troca).
+                  onChanged: _saving || _typeLocked
+                      ? null
+                      : (value) => setState(() => _type = value),
+                ),
+              ),
               _field('cnpj', 'CNPJ'),
               _field('email', 'E-mail', email: true),
               _field('phone', 'Telefone'),
@@ -538,7 +696,7 @@ class _InstitutionFormState extends State<InstitutionForm> {
       final message = await widget.onSubmit(Institution(
         id: previous?.id ?? '',
         name: value('name'),
-        type: value('type'),
+        type: _type!.value,
         cnpj: value('cnpj'),
         email: value('email'),
         phone: value('phone'),
@@ -629,7 +787,11 @@ class _ProfessionalFormState extends State<ProfessionalForm> {
                   const InputDecoration(labelText: 'Usuário vinculado *'),
               items: [
                 for (final item in widget.users)
-                  if (item.active || item.id == widget.professional?.userId)
+                  // Só Escola e Saúde têm cadastro profissional (D-03).
+                  if ((item.active &&
+                          (item.role == UserRole.school ||
+                              item.role == UserRole.health)) ||
+                      item.id == widget.professional?.userId)
                     DropdownMenuItem<String?>(
                       value: item.id,
                       enabled: item.active &&
@@ -892,7 +1054,9 @@ class InstitutionPicker extends StatelessWidget {
       {required this.institutions,
       required this.selectedIds,
       required this.onChanged,
+      this.label = 'Instituições',
       super.key});
+  final String label;
   final List<Institution> institutions;
   final Set<String> selectedIds;
   final ValueChanged<Set<String>> onChanged;
@@ -908,8 +1072,8 @@ class InstitutionPicker extends StatelessWidget {
         },
         borderRadius: BorderRadius.circular(8),
         child: InputDecorator(
-          decoration: const InputDecoration(
-              labelText: 'Instituições', suffixIcon: Icon(Icons.search)),
+          decoration: InputDecoration(
+              labelText: label, suffixIcon: const Icon(Icons.search)),
           child: Text(
             selectedIds.isEmpty
                 ? 'Selecionar instituições ativas'
@@ -972,7 +1136,9 @@ class _InstitutionPickerDialogState extends State<_InstitutionPickerDialog> {
                           return CheckboxListTile(
                             value: selected.contains(item.id),
                             title: Text(item.name),
-                            subtitle: Text(item.type),
+                            subtitle: Text(
+                                InstitutionType.fromValue(item.type)?.label ??
+                                    item.type),
                             onChanged: (checked) => setState(() =>
                                 checked == true
                                     ? selected.add(item.id)

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:caminho_azul/app/router.dart';
 import 'package:caminho_azul/app/theme.dart';
 import 'package:caminho_azul/models/admin_models.dart';
+import 'package:caminho_azul/models/student_models.dart';
 import 'package:caminho_azul/repositories/admin_repository.dart';
 import 'package:caminho_azul/screens/admin_screen.dart';
 import 'package:caminho_azul/screens/login_screen.dart';
@@ -292,10 +293,10 @@ void main() {
       find.byKey(const Key('admin-form-name')),
       'Centro Azul',
     );
-    await tester.enterText(
-      find.byKey(const Key('admin-form-type')),
-      'Centro de apoio',
-    );
+    await tester.tap(find.byKey(const Key('admin-form-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('UBS').last);
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('admin-form-street')),
       'Rua Principal',
@@ -393,6 +394,7 @@ void main() {
       find.byKey(const Key('admin-school-role-option-teacher')),
     );
     await tester.pumpAndSettle();
+    await _selectInstitution(tester, 'EM Monteiro Lobato');
     await tester.ensureVisible(find.byKey(const Key('admin-form-submit')));
     await tester.tap(find.byKey(const Key('admin-form-submit')));
     await tester.pumpAndSettle();
@@ -401,6 +403,7 @@ void main() {
     expect(repository.users.single.email, 'maria@exemplo.com');
     expect(repository.users.single.role, UserRole.school);
     expect(repository.users.single.schoolRole, SchoolRole.teacher);
+    expect(repository.users.single.institutionIds, ['inst-1']);
     expect(find.text('Maria Silva'), findsOneWidget);
     expect(
       find.text(
@@ -484,14 +487,16 @@ void main() {
     await tester.tap(find.byKey(const Key('admin-form-role')));
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('admin-role-option-health')),
+      find.byKey(const Key('admin-health-role-option-psychologist')),
       findsOneWidget,
     );
     await tester.ensureVisible(
-      find.byKey(const Key('admin-role-option-health')),
+      find.byKey(const Key('admin-health-role-option-psychologist')),
     );
-    await tester.tap(find.byKey(const Key('admin-role-option-health')));
+    await tester.tap(find.byKey(const Key('admin-health-role-option-psychologist')));
     await tester.pumpAndSettle();
+    // D-A01: perfil da Saúde só pode atuar em UBS.
+    await _selectInstitution(tester, 'UBS Jardim Sintético');
     await tester.ensureVisible(find.byKey(const Key('admin-form-submit')));
     await tester.tap(find.byKey(const Key('admin-form-submit')));
     await tester.pumpAndSettle();
@@ -500,10 +505,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.users.single.role, UserRole.health);
+    expect(repository.users.single.healthRole, HealthRole.psychologist);
+    expect(repository.users.single.schoolRole, isNull);
     expect(find.text('Usuário atualizado com sucesso.'), findsOneWidget);
   });
 
-  testWidgets('administracao exclui outro usuario apos confirmacao',
+  testWidgets('administracao desativa outro usuario pelo botao Excluir apos confirmacao',
       (tester) async {
     final repository = FakeAdminRepository()
       ..addUser(const AdminUser(
@@ -527,15 +534,19 @@ void main() {
     await tester.tap(find.byKey(const Key('admin-form-delete-user')));
     await tester.pumpAndSettle();
     expect(find.text('Excluir usuário?'), findsOneWidget);
+    expect(find.textContaining('não excluída permanentemente'), findsOneWidget);
     expect(repository.users, hasLength(1));
 
     await tester.tap(find.byKey(const Key('admin-confirm-delete-user')));
     await tester.pumpAndSettle();
 
-    expect(repository.users, isEmpty);
-    expect(find.text('Usuário Excluível'), findsNothing);
+    // D-15: o botão mantém o nome, mas desativa (não apaga) a conta.
+    expect(find.textContaining('não excluída permanentemente'), findsNothing);
+    expect(repository.users, hasLength(1));
+    expect(repository.users.single.active, isFalse);
     expect(
-      find.text('Usuário excluído e acesso removido com sucesso.'),
+      find.text(
+          'Conta desativada. Ela não foi excluída permanentemente e o histórico foi preservado.'),
       findsOneWidget,
     );
   });
@@ -734,6 +745,11 @@ class FakeAdminUserService implements AdminUserService {
       invitationSent: true,
     );
   }
+
+  int activationCalls = 0;
+
+  @override
+  Future<void> sendActivation(String email) async => activationCalls++;
 }
 
 class FakeAdminRepository implements AdminRepository {
@@ -741,10 +757,24 @@ class FakeAdminRepository implements AdminRepository {
     const Institution(
       id: 'inst-1',
       name: 'EM Monteiro Lobato',
-      type: 'Escola',
+      type: 'school',
       address: Address(
         street: 'Rua Azul',
         number: '10',
+        district: 'Centro',
+        city: 'Belém',
+        state: 'PA',
+        zipCode: '66000-000',
+      ),
+      active: true,
+    ),
+    const Institution(
+      id: 'inst-ubs',
+      name: 'UBS Jardim Sintético',
+      type: 'ubs',
+      address: Address(
+        street: 'Rua Verde',
+        number: '20',
         district: 'Centro',
         city: 'Belém',
         state: 'PA',
@@ -775,6 +805,15 @@ class FakeAdminRepository implements AdminRepository {
     ),
   ];
   final users = <AdminUser>[];
+  final students = <Student>[
+    const Student(
+      id: 'est-1',
+      name: 'Estudante Sintético',
+      grade: '3º ano',
+      schoolInstitutionId: 'inst-1',
+      active: true,
+    ),
+  ];
   final networks = <LocalNetwork>[];
   final parameters = <AdminParameter>[];
 
@@ -808,6 +847,21 @@ class FakeAdminRepository implements AdminRepository {
     yield* _networks.stream;
   }
 
+  final auditLogs = <AuditEntry>[
+    AuditEntry(
+      id: 'log-1',
+      action: 'user.deactivate',
+      actorUid: 'admin',
+      targetType: 'institution',
+      targetId: 'inst-1',
+      createdAt: DateTime(2026, 11, 23, 10, 30),
+    ),
+  ];
+
+  @override
+  Stream<List<AuditEntry>> watchAuditLogs({int limit = 200}) =>
+      Stream.value(List.unmodifiable(auditLogs));
+
   @override
   Stream<List<AdminParameter>> watchParameters() async* {
     yield List.unmodifiable(parameters);
@@ -828,6 +882,9 @@ class FakeAdminRepository implements AdminRepository {
   Future<List<AdminUser>> getUsers() async => List.of(users);
 
   @override
+  Future<List<Student>> getStudents() async => List.of(students);
+
+  @override
   Future<void> createUserProfile(
     String uid,
     UserFormData value, {
@@ -841,6 +898,9 @@ class FakeAdminRepository implements AdminRepository {
       email: value.normalizedEmail,
       role: value.role,
       schoolRole: value.schoolRole,
+      healthRole: value.healthRole,
+      institutionIds: value.institutionIds,
+      studentIds: [if (value.studentId != null) value.studentId!],
       active: value.active,
       professionalId: value.professionalId,
       createdBy: actorUid,
@@ -862,6 +922,9 @@ class FakeAdminRepository implements AdminRepository {
       email: user.email,
       role: value.role,
       schoolRole: value.schoolRole,
+      healthRole: value.healthRole,
+      institutionIds: value.institutionIds,
+      studentIds: [if (value.studentId != null) value.studentId!],
       active: value.active,
       professionalId: value.professionalId,
       createdAt: user.createdAt,
@@ -881,7 +944,17 @@ class FakeAdminRepository implements AdminRepository {
         'Você não pode excluir a própria conta administrativa.',
       );
     }
-    users.removeWhere((item) => item.id == user.id);
+    final index = users.indexWhere((item) => item.id == user.id);
+    final current = users[index];
+    users[index] = AdminUser(
+      id: current.id,
+      firstName: current.firstName,
+      lastName: current.lastName,
+      name: current.name,
+      email: current.email,
+      role: current.role,
+      active: false,
+    );
     _users.add(List.unmodifiable(users));
   }
 
@@ -961,4 +1034,14 @@ class FakeAdminRepository implements AdminRepository {
     users.add(value);
     _users.add(List.unmodifiable(users));
   }
+}
+
+Future<void> _selectInstitution(WidgetTester tester, String name) async {
+  await tester.ensureVisible(find.byKey(const Key('admin-form-institutions')));
+  await tester.tap(find.byKey(const Key('admin-form-institutions')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(CheckboxListTile, name));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Aplicar'));
+  await tester.pumpAndSettle();
 }
