@@ -4,6 +4,7 @@ import '../app/router.dart';
 import '../app/theme.dart';
 import '../services/auth_service.dart';
 import 'app_shell.dart';
+import 'authenticated_route_guard.dart' show homeRouteFor, isRouteActive;
 
 class AdminRouteGuard extends StatelessWidget {
   const AdminRouteGuard({
@@ -21,6 +22,24 @@ class AdminRouteGuard extends StatelessWidget {
       stream: authService.adminSessionChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          return const _AdminValidationLoading();
+        }
+        // Rota já removida (saída da conta): não reage ao fim da sessão.
+        if (!isRouteActive(context)) {
+          return const _AdminValidationLoading();
+        }
+
+        final error = snapshot.error;
+        if (error is NotAdminSessionException) {
+          // Outro perfil com sessão válida: volta à própria área (D-A05).
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted || !isRouteActive(context)) return;
+            Navigator.pushReplacementNamed(context, homeRouteFor(error.role));
+            ScaffoldMessenger.of(context)
+              ..clearSnackBars()
+              ..showSnackBar(const SnackBar(
+                  content: Text('Você não possui acesso a esta área.')));
+          });
           return const _AdminValidationLoading();
         }
 
@@ -51,12 +70,12 @@ class AdminRouteGuard extends StatelessWidget {
       return error.message;
     }
 
-    return 'Nao foi possivel validar o acesso administrativo.';
+    return 'Não foi possível validar o acesso administrativo.';
   }
 
   void _redirectToLogin(BuildContext context, String message) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) {
+      if (!context.mounted || !isRouteActive(context)) {
         return;
       }
 

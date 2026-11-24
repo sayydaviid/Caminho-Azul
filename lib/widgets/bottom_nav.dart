@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/router.dart';
 import '../services/auth_service.dart';
+import 'demo_only.dart';
 
 class BottomNav extends StatelessWidget {
   const BottomNav({required this.currentRoute, this.role, super.key});
@@ -19,13 +20,17 @@ class BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (currentRoute == AppRoutes.admin) {
+      // O painel é o início do admin: volta ao estado inicial do painel, e não
+      // para `/app`, que é a área da Escola.
       return _AdminHomeNavigation(
-        onTap: () =>
-            Navigator.pushReplacementNamed(context, AppRoutes.dashboard),
+        onTap: () => Navigator.pushReplacementNamed(context, AppRoutes.admin),
       );
     }
     final routes = _visibleRoutes;
-    final index = routes.indexOf(currentRoute);
+    // Com uma única área real, a barra inferior não é necessária.
+    if (routes.length < 2) return const SizedBox.shrink();
+    final index = routes.indexOf(
+        currentRoute == AppRoutes.dashboard ? AppRoutes.cases : currentRoute);
     return NavigationBar(
       selectedIndex: index < 0 ? 0 : index,
       onDestinationSelected: (next) {
@@ -38,6 +43,13 @@ class BottomNav extends StatelessWidget {
   }
 
   List<String> get _visibleRoutes {
+    if (!demoMode) {
+      return switch (role) {
+        UserRole.family => const [AppRoutes.family, AppRoutes.notifications],
+        UserRole.health => const [AppRoutes.health],
+        _ => const [AppRoutes.cases, AppRoutes.students],
+      };
+    }
     if (role == UserRole.family) {
       return const [AppRoutes.family, AppRoutes.timeline, AppRoutes.documents];
     }
@@ -52,10 +64,22 @@ class BottomNav extends StatelessWidget {
             icon: Icon(Icons.favorite_outline),
             selectedIcon: Icon(Icons.favorite),
             label: 'Família'),
+        AppRoutes.notifications => const NavigationDestination(
+            icon: Icon(Icons.notifications_outlined),
+            selectedIcon: Icon(Icons.notifications),
+            label: 'Notificações'),
         AppRoutes.health => const NavigationDestination(
             icon: Icon(Icons.medical_services_outlined),
             selectedIcon: Icon(Icons.medical_services),
             label: 'Saúde'),
+        AppRoutes.cases => const NavigationDestination(
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: 'Casos'),
+        AppRoutes.students => const NavigationDestination(
+            icon: Icon(Icons.badge_outlined),
+            selectedIcon: Icon(Icons.badge),
+            label: 'Estudantes'),
         AppRoutes.observation => const NavigationDestination(
             icon: Icon(Icons.assignment_outlined),
             selectedIcon: Icon(Icons.assignment),

@@ -3,15 +3,22 @@ import 'dart:async';
 import 'package:caminho_azul/app/router.dart';
 import 'package:caminho_azul/app/theme.dart';
 import 'package:caminho_azul/models/admin_models.dart';
+import 'package:caminho_azul/models/case_models.dart';
+import 'package:caminho_azul/models/referral_models.dart';
 import 'package:caminho_azul/models/student_models.dart';
+import 'package:caminho_azul/repositories/case_repository.dart';
+import 'package:caminho_azul/repositories/student_repository.dart';
 import 'package:caminho_azul/repositories/admin_repository.dart';
 import 'package:caminho_azul/screens/admin_screen.dart';
+import 'package:caminho_azul/screens/casos_screen.dart';
 import 'package:caminho_azul/screens/login_screen.dart';
 import 'package:caminho_azul/services/admin_user_service.dart';
 import 'package:caminho_azul/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/empty_referral_repository.dart';
 
 void main() {
   testWidgets('abre a tela de login sem botao de primeiro acesso',
@@ -72,7 +79,7 @@ void main() {
     await tester.pump();
 
     expect(authService.signInCalls, 0);
-    expect(find.text('Digite um e-mail valido.'), findsOneWidget);
+    expect(find.text('Digite um e-mail válido.'), findsOneWidget);
   });
 
   testWidgets('nao autentica com senha vazia', (tester) async {
@@ -157,7 +164,7 @@ void main() {
     expect(authService.signOutCalls, 1);
     expect(
       find.text(
-          'O perfil selecionado nao corresponde ao perfil cadastrado para este usuario.'),
+          'O perfil selecionado não corresponde ao perfil cadastrado para este usuário.'),
       findsOneWidget,
     );
   });
@@ -179,7 +186,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(authService.signOutCalls, 0);
-    expect(find.text('Dashboard'), findsOneWidget);
+    // Área da Escola: lista real de casos (P1-01), sem dados fictícios.
+    expect(find.text('Casos'), findsWidgets);
+    expect(find.byKey(const Key('demo-only-placeholder')), findsNothing);
   });
 
   testWidgets('login bem-sucedido navega para a rota do perfil',
@@ -195,7 +204,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(authService.signInCalls, 1);
-    expect(find.text('Status do acompanhamento'), findsOneWidget);
+    // Área da Família: acompanhamento real (P1-08), sem dados fictícios.
+    expect(find.text('Acompanhamento familiar'), findsOneWidget);
+    expect(find.byKey(const Key('family-empty')), findsOneWidget);
+    expect(find.byKey(const Key('demo-only-placeholder')), findsNothing);
   });
 
   testWidgets('login administrativo valida sessao antes de exibir a area',
@@ -231,6 +243,13 @@ void main() {
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
     expect(scaffold.resizeToAvoidBottomInset, isFalse);
 
+    // "Início" mantém o admin no painel (antes levava à área da Escola).
+    await tester.tap(find.byKey(const Key('admin-home-navigation')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('admin-screen')), findsOneWidget);
+    expect(find.text('Casos'), findsNothing);
+    expect(find.byKey(const Key('demo-only-placeholder')), findsNothing);
+
     await tester.tap(find.byKey(const Key('admin-profile-menu')));
     await tester.pumpAndSettle();
     expect(find.text('Sair'), findsOneWidget);
@@ -238,6 +257,153 @@ void main() {
     await tester.pumpAndSettle();
     expect(authService.signOutCalls, 1);
     expect(find.text('Caminho Azul'), findsOneWidget);
+  });
+
+  testWidgets('sair da conta não exibe erro nem redireciona depois (D-A02)',
+      (tester) async {
+    const admin = AppUser(
+        uid: 'a', email: 'admin@exemplo.com', role: UserRole.administration);
+    for (final (route, auth) in [
+      (AppRoutes.cases, SessionEndingAuthService()),
+      (
+        AppRoutes.admin,
+        SessionEndingAuthService(appUser: admin, adminSessionUser: admin)
+      ),
+    ]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          key: ValueKey(route),
+          theme: AppTheme.light,
+          initialRoute: route,
+          onGenerateRoute: (settings) => AppRouter.generateRoute(
+            settings,
+            authService: auth,
+            adminRepository: FakeAdminRepository(),
+            caseRepository: EmptyCaseRepository(),
+            studentRepository: EmptyStudentRepository(),
+            referralRepository: EmptyReferralRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (route == AppRoutes.admin) {
+        await tester.tap(find.byKey(const Key('admin-profile-menu')));
+      } else {
+        await tester.tap(find.byTooltip('Open navigation menu'));
+      }
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sair'));
+      await tester.pumpAndSettle();
+
+      expect(auth.signOutCalls, 1, reason: route);
+      expect(find.byKey(const Key('login-submit-button')), findsOneWidget,
+          reason: route);
+      expect(find.byType(SnackBar), findsNothing, reason: route);
+    }
+  });
+
+  testWidgets('perfil em rota de outra área volta à própria área (D-A05)',
+      (tester) async {
+    final authService = FakeAuthService(
+      adminSessionError: const NotAdminSessionException(UserRole.school),
+    );
+    for (final route in [
+      AppRoutes.family,
+      AppRoutes.health,
+      AppRoutes.timeline,
+      AppRoutes.documents,
+      AppRoutes.reports,
+      AppRoutes.admin,
+      '/rota-inexistente',
+    ]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          key: ValueKey(route),
+          theme: AppTheme.light,
+          initialRoute: route,
+          onGenerateRoute: (settings) => AppRouter.generateRoute(
+            settings,
+            authService: authService,
+            adminRepository: FakeAdminRepository(),
+            caseRepository: EmptyCaseRepository(),
+            studentRepository: EmptyStudentRepository(),
+            referralRepository: EmptyReferralRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CasosScreen), findsOneWidget, reason: route);
+      expect(find.text('Você não possui acesso a esta área.'), findsOneWidget,
+          reason: route);
+      expect(find.byKey(const Key('demo-only-placeholder')), findsNothing,
+          reason: route);
+      expect(find.byKey(const Key('login-submit-button')), findsNothing,
+          reason: route);
+      expect(authService.signOutCalls, 0, reason: route);
+    }
+  });
+
+  testWidgets('menu lateral: "Sair" é um botão próprio para leitor de tela (P2-03)',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      initialRoute: AppRoutes.cases,
+      onGenerateRoute: (settings) => AppRouter.generateRoute(settings,
+          authService: FakeAuthService(),
+          caseRepository: EmptyCaseRepository(),
+          studentRepository: EmptyStudentRepository(),
+          referralRepository: EmptyReferralRepository()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    final data = tester.getSemantics(find.text('Sair')).getSemanticsData();
+    expect(data.label, 'Sair');
+    expect(data.hasFlag(SemanticsFlag.isButton), isTrue);
+    expect(data.hasAction(SemanticsAction.tap), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('admin em rota de outro perfil volta ao painel', (tester) async {
+    const adminUser = AppUser(
+      uid: '1',
+      email: 'admin@exemplo.com',
+      role: UserRole.administration,
+      name: 'Admin Teste',
+    );
+    final authService =
+        FakeAuthService(appUser: adminUser, adminSessionUser: adminUser);
+
+    for (final route in [
+      AppRoutes.dashboard,
+      AppRoutes.students,
+      AppRoutes.family,
+      AppRoutes.health,
+    ]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          key: ValueKey(route),
+          theme: AppTheme.light,
+          initialRoute: route,
+          onGenerateRoute: (settings) => AppRouter.generateRoute(
+            settings,
+            authService: authService,
+            adminRepository: FakeAdminRepository(),
+            caseRepository: EmptyCaseRepository(),
+            studentRepository: EmptyStudentRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('admin-screen')), findsOneWidget,
+          reason: route);
+      expect(find.byKey(const Key('demo-only-placeholder')), findsNothing,
+          reason: route);
+      expect(find.text('Caminho Azul'), findsNothing, reason: route);
+      expect(authService.signOutCalls, 0, reason: route);
+    }
   });
 
   testWidgets('rota administrativa direta fica bloqueada sem sessao valida',
@@ -251,6 +417,8 @@ void main() {
         onGenerateRoute: (settings) => AppRouter.generateRoute(
           settings,
           authService: authService,
+          caseRepository: EmptyCaseRepository(),
+          studentRepository: EmptyStudentRepository(),
         ),
       ),
     );
@@ -551,17 +719,152 @@ void main() {
     );
   });
 
-  test('roles persistidas: só valores canônicos dão acesso; legados só normalizam', () {
+  test('roles canônicas em inglês; valores em português só para normalização',
+      () {
     expect(UserRole.fromValue('school'), UserRole.school);
     expect(UserRole.fromValue('family'), UserRole.family);
     expect(UserRole.fromValue('health'), UserRole.health);
     expect(UserRole.fromValue('admin'), UserRole.administration);
     expect(UserRole.fromValue('escola'), isNull);
+    expect(UserRole.fromValue('saude'), isNull);
     expect(UserRole.fromLegacyValue('escola'), UserRole.school);
+    expect(UserRole.fromLegacyValue('familia'), UserRole.family);
     expect(SchoolRole.fromValue('teacher'), SchoolRole.teacher);
-    expect(SchoolRole.fromLegacyValue('professor'), SchoolRole.teacher);
+    expect(SchoolRole.fromValue('director'), SchoolRole.director);
+    expect(SchoolRole.fromValue('professor'), isNull);
     expect(SchoolRole.fromLegacyValue('direcao'), SchoolRole.director);
     expect(SchoolRole.fromValue('coordenacao'), isNull);
+    expect(HealthRole.fromValue('ubs_director'), HealthRole.ubsDirector);
+    expect(HealthRole.fromValue('psychologist'), HealthRole.psychologist);
+    expect(HealthRole.fromValue('psicologo'), isNull);
+  });
+
+  testWidgets('conta familiar exige estudante e operacional exige instituicao',
+      (tester) async {
+    final repository = FakeAdminRepository();
+    final userService = FakeAdminUserService();
+    await _pumpAdmin(tester, repository: repository, userService: userService);
+    await tester.tap(find.byKey(const Key('admin-tab-users')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin-new-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('admin-form-fullName')), 'Família Sintética');
+    await tester.enterText(
+        find.byKey(const Key('admin-form-email')), 'familia@exemplo.com');
+
+    // Família sem estudante: bloqueada pela validação.
+    await tester.ensureVisible(find.byKey(const Key('admin-form-submit')));
+    await tester.tap(find.byKey(const Key('admin-form-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Selecione o estudante.'), findsOneWidget);
+    expect(userService.createCalls, 0);
+
+    // Saúde sem instituição: bloqueada.
+    await tester.tap(find.byKey(const Key('admin-form-role')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin-health-role-option-ubs_director')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('admin-form-submit')));
+    await tester.tap(find.byKey(const Key('admin-form-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Selecione ao menos uma instituição de atuação.'),
+        findsOneWidget);
+    expect(userService.createCalls, 0);
+
+    // Volta para Família e vincula o estudante.
+    await tester.tap(find.byKey(const Key('admin-form-role')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('admin-role-option-family')));
+    await tester.tap(find.byKey(const Key('admin-role-option-family')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin-form-student')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Estudante Sintético • 3º ano').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('admin-form-submit')));
+    await tester.tap(find.byKey(const Key('admin-form-submit')));
+    await tester.pumpAndSettle();
+    expect(userService.createCalls, 1);
+    expect(repository.users.single.role, UserRole.family);
+    expect(repository.users.single.studentIds, ['est-1']);
+    expect(repository.users.single.institutionIds, isEmpty);
+  });
+
+  testWidgets('auditoria: consulta somente leitura com nomes (P1-12)',
+      (tester) async {
+    await _pumpAdmin(tester);
+    await tester.binding.setSurfaceSize(const Size(1400, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin-tab-audit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Buscar por ação, autor ou alvo...'), findsOneWidget);
+
+    expect(find.byKey(const Key('admin-audit-log-1')), findsOneWidget);
+    expect(find.text('Usuário desativado'), findsOneWidget);
+    expect(find.textContaining('Instituição: EM Monteiro Lobato'), findsOneWidget);
+    expect(find.textContaining('Em: 23/11/2026 10:30'), findsOneWidget);
+    expect(find.byTooltip('Editar'), findsNothing);
+    final newButton = tester
+        .widget<ButtonStyleButton>(find.byKey(const Key('admin-new-button')));
+    expect(newButton.onPressed, isNull);
+
+    await tester.enterText(
+        find.byKey(const Key('admin-search-field')), 'monteiro');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('admin-audit-log-1')), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const Key('admin-search-field')), 'inexistente');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('admin-empty')), findsOneWidget);
+  });
+
+  testWidgets('seletor de instituições segue o perfil (D-A01)', (tester) async {
+    await _pumpAdmin(tester);
+    await tester.tap(find.byKey(const Key('admin-tab-users')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin-new-button')));
+    await tester.pumpAndSettle();
+
+    Future<List<String>> optionsFor(String roleKey) async {
+      await tester.tap(find.byKey(const Key('admin-form-role')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(Key(roleKey)));
+      await tester.tap(find.byKey(Key(roleKey)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin-form-institutions')));
+      await tester.pumpAndSettle();
+      final names = tester
+          .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
+          .map((tile) => (tile.title! as Text).data!)
+          .toList();
+      expect(find.text('school'), findsNothing);
+      expect(find.text('ubs'), findsNothing);
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      return names;
+    }
+
+    expect(await optionsFor('admin-school-role-option-teacher'),
+        ['EM Monteiro Lobato']);
+    expect(await optionsFor('admin-health-role-option-psychologist'),
+        ['UBS Jardim Sintético']);
+  });
+
+  testWidgets('falha de rede ao carregar o perfil tem mensagem própria (P2-04)',
+      (tester) async {
+    final authService = FakeAuthService(
+      signInError:
+          FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
+    );
+    await _pumpLogin(tester, authService);
+    await _fillLogin(tester, profile: 'Escola');
+    await _tapSubmit(tester);
+    await tester.pumpAndSettle();
+    expect(
+        find.text('Não foi possível conectar ao serviço. Verifique sua internet.'),
+        findsOneWidget);
   });
 
   testWidgets('recuperacao de senha exige e-mail valido', (tester) async {
@@ -572,7 +875,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(authService.resetCalls, 0);
-    expect(find.text('Digite um e-mail valido para recuperar a senha.'),
+    expect(find.text('Digite um e-mail válido para recuperar a senha.'),
         findsOneWidget);
   });
 }
@@ -586,6 +889,8 @@ Future<void> _pumpLogin(WidgetTester tester, AuthService authService) {
         settings,
         authService: authService,
         adminRepository: repository,
+        caseRepository: EmptyCaseRepository(),
+        studentRepository: EmptyStudentRepository(),
       ),
       home: LoginScreen(authService: authService),
     ),
@@ -726,6 +1031,35 @@ class FakeAuthService implements AuthService {
   Future<void> signOut() {
     signOutCalls++;
     return Future.value();
+  }
+}
+
+/// Simula o Firestore real: ao encerrar a sessão, os listeners ainda abertos
+/// do usuário que sai falham com permission-denied.
+class SessionEndingAuthService extends FakeAuthService {
+  SessionEndingAuthService({super.appUser, super.adminSessionUser});
+
+  final _events = StreamController<AppUser?>.broadcast();
+
+  Stream<AppUser?> _session(AppUser? first) async* {
+    yield first;
+    yield* _events.stream;
+  }
+
+  @override
+  Stream<AppUser?> sessionChanges() => _session(appUser);
+
+  @override
+  Stream<AppUser?> adminSessionChanges() {
+    adminSessionCalls++;
+    return _session(adminSessionUser);
+  }
+
+  @override
+  Future<void> signOut() async {
+    await super.signOut();
+    _events.addError(FirebaseException(
+        plugin: 'cloud_firestore', code: 'permission-denied'));
   }
 }
 
@@ -1044,4 +1378,69 @@ Future<void> _selectInstitution(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
   await tester.tap(find.text('Aplicar'));
   await tester.pumpAndSettle();
+}
+
+class EmptyCaseRepository implements CaseRepository {
+  @override
+  Future<List<StaffOption>> teachersOf(String schoolId) async => const [];
+  @override
+  Future<void> updateTeachers(AppUser director, StudentCase value,
+      {required List<String> teacherUids,
+      required String primaryTeacherUid}) async {}
+
+  @override
+  Stream<List<StudentCase>> watchTeacherCases(AppUser teacher, String schoolId,
+          {int limit = 30}) =>
+      Stream.value(const []);
+  @override
+  Stream<List<StudentCase>> watchSchoolCases(String schoolId, {int limit = 30}) =>
+      Stream.value(const []);
+  @override
+  Stream<StudentCase?> watchCase(String caseId) => Stream.value(null);
+  @override
+  Stream<List<TimelineEvent>> watchSchoolTimeline(String caseId) =>
+      Stream.value(const []);
+  @override
+  Future<String> createCase(AppUser teacher, Student student) async => 'c1';
+  @override
+  Future<void> submitCase(AppUser teacher, StudentCase value) async {}
+  @override
+  Stream<List<Observation>> watchObservations(String caseId) =>
+      Stream.value(const []);
+  @override
+  Future<void> addObservation(AppUser teacher, StudentCase value,
+      {required String context,
+      required String description,
+      required DateTime observedAt}) async {}
+  @override
+  Stream<List<PedagogicalRecord>> watchRecords(String caseId) =>
+      Stream.value(const []);
+  @override
+  Future<void> addRecord(AppUser teacher, StudentCase value,
+      {required String summary,
+      required List<String> actions,
+      required List<String> observationIds}) async {}
+}
+
+class EmptyStudentRepository implements StudentRepository {
+  @override
+  Stream<List<Student>> watchSchoolStudents(String schoolInstitutionId, {int limit = 30}) =>
+      Stream.value(const []);
+  @override
+  Future<Map<String, String>> institutionNames(List<String> ids) async => {};
+  @override
+  Future<void> createStudent({
+    required String schoolInstitutionId,
+    required String name,
+    required String actorUid,
+    String? grade,
+  }) async {}
+  @override
+  Future<void> updateStudent(
+    Student student, {
+    required String name,
+    required bool active,
+    required String actorUid,
+    String? grade,
+  }) async {}
 }

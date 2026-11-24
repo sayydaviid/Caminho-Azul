@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import '../app/router.dart';
 import '../app/theme.dart';
 import '../services/auth_service.dart';
+import '../widgets/brand_mark.dart';
 import '../widgets/dashboard_card.dart';
+import '../widgets/demo_only.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -128,20 +130,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           crossAxisAlignment: WrapCrossAlignment.center,
                           spacing: 8,
                           children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Checkbox(
-                                  value: remember,
-                                  onChanged: isLoginLoading
-                                      ? null
-                                      : (value) => setState(
-                                          () => remember = value ?? false),
-                                ),
-                                const Text('Lembrar acesso',
-                                    style: TextStyle(color: AppColors.muted)),
-                              ],
-                            ),
+                            // P1-14: "Lembrar acesso" ainda não tem efeito.
+                            if (demoMode)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Checkbox(
+                                    value: remember,
+                                    onChanged: isLoginLoading
+                                        ? null
+                                        : (value) => setState(
+                                            () => remember = value ?? false),
+                                  ),
+                                  const Text('Lembrar acesso',
+                                      style: TextStyle(color: AppColors.muted)),
+                                ],
+                              ),
                             TextButton(
                               onPressed: isLoginLoading || isResetLoading
                                   ? null
@@ -263,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (user.role != profile.requiredRole) {
         await _authService.signOut();
         throw const AuthException(
-          'O perfil selecionado nao corresponde ao perfil cadastrado para este usuario.',
+          'O perfil selecionado não corresponde ao perfil cadastrado para este usuário.',
         );
       }
 
@@ -286,11 +290,25 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       _showMessage(error.message);
-    } catch (_) {
+    } on FirebaseException catch (error) {
+      // Falha ao carregar o perfil no Firestore após autenticar (P2-04).
+      // Diagnóstico técnico: só plugin e código, nunca credenciais.
+      debugPrint('Login: FirebaseException ${error.plugin}/${error.code}');
       if (!mounted) {
         return;
       }
-      _showMessage('Nao foi possivel entrar. Tente novamente.');
+      _showMessage(switch (error.code) {
+        'unavailable' || 'deadline-exceeded' =>
+          'Não foi possível conectar ao serviço. Verifique sua internet.',
+        'permission-denied' => 'Não foi possível validar seu acesso.',
+        _ => 'Não foi possível entrar. Tente novamente.',
+      });
+    } catch (error) {
+      debugPrint('Login: falha inesperada (${error.runtimeType})');
+      if (!mounted) {
+        return;
+      }
+      _showMessage('Não foi possível entrar. Tente novamente.');
     } finally {
       if (mounted) {
         setState(() => isLoginLoading = false);
@@ -305,7 +323,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final emailError = _validateEmail(_emailController.text);
     if (emailError != null) {
-      _showMessage('Digite um e-mail valido para recuperar a senha.');
+      _showMessage('Digite um e-mail válido para recuperar a senha.');
       return;
     }
 
@@ -317,7 +335,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       _showMessage(
-          'Se existir uma conta vinculada a esse e-mail, voce recebera as instrucoes de recuperacao.');
+          'Se existir uma conta vinculada a esse e-mail, você receberá as instruções de recuperação.');
     } on FirebaseAuthException catch (error) {
       if (!mounted) {
         return;
@@ -328,7 +346,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       _showMessage(
-          'Nao foi possivel solicitar a recuperacao. Tente novamente.');
+          'Não foi possível solicitar a recuperação. Tente novamente.');
     } finally {
       if (mounted) {
         setState(() => isResetLoading = false);
@@ -343,7 +361,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     final isEmail = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
     if (!isEmail) {
-      return 'Digite um e-mail valido.';
+      return 'Digite um e-mail válido.';
     }
     return null;
   }
@@ -427,6 +445,8 @@ class _LoginTextField extends StatelessWidget {
             suffixIcon: suffixIcon == null
                 ? null
                 : IconButton(
+                    // P2-03: rótulo para leitor de tela (mostrar/ocultar senha).
+                    tooltip: obscureText ? 'Mostrar senha' : 'Ocultar senha',
                     onPressed: enabled ? onSuffixPressed : null,
                     icon: Icon(suffixIcon, size: 19),
                   ),
@@ -444,17 +464,8 @@ class _Brand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(
-          width: 58,
-          height: 58,
-          decoration: BoxDecoration(
-            color: const Color(0xFFDBEAFE),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.extension_outlined,
-              size: 32, color: AppColors.primary),
-        ),
-        const SizedBox(height: 10),
+        const BrandMark(key: Key('brand-mark'), size: 60),
+        const SizedBox(height: 12),
         Text(
           'Caminho Azul',
           style: Theme.of(context)
@@ -464,7 +475,7 @@ class _Brand extends StatelessWidget {
         ),
         const SizedBox(height: 5),
         const Text(
-          'Plataforma de integracao entre escola, familia e rede de cuidado',
+          'Plataforma de integração entre escola, família e rede de cuidado',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppColors.muted, height: 1.4),
         ),

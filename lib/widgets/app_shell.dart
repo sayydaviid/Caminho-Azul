@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../app/router.dart';
 import '../app/theme.dart';
+import '../repositories/notification_repository.dart';
 import '../services/auth_service.dart';
 import 'bottom_nav.dart';
+import 'brand_mark.dart';
+import 'demo_only.dart';
+import 'notification_bell.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -12,6 +16,8 @@ class AppShell extends StatelessWidget {
     this.authService,
     this.displayName,
     this.role,
+    this.notificationRepository,
+    this.notificationStudentId,
     super.key,
   });
 
@@ -20,24 +26,28 @@ class AppShell extends StatelessWidget {
   final AuthService? authService;
   final String? displayName;
   final UserRole? role;
+  final NotificationRepository? notificationRepository;
+  final String? notificationStudentId;
 
   static const menuItems = [
     (AppRoutes.dashboard, Icons.dashboard_outlined, 'Dashboard'),
     (AppRoutes.cases, Icons.people_outline, 'Casos'),
-    (AppRoutes.observation, Icons.assignment_outlined, 'Ficha de Observacao'),
-    (AppRoutes.reports, Icons.description_outlined, 'Relatorios'),
+    (AppRoutes.students, Icons.badge_outlined, 'Estudantes'),
+    (AppRoutes.observation, Icons.assignment_outlined, 'Ficha de Observação'),
+    (AppRoutes.reports, Icons.description_outlined, 'Relatórios'),
     (AppRoutes.referrals, Icons.send_outlined, 'Encaminhamentos'),
     (AppRoutes.timeline, Icons.timeline_outlined, 'Linha do Tempo'),
     (AppRoutes.documents, Icons.folder_outlined, 'Documentos'),
-    (AppRoutes.family, Icons.favorite_outline, 'Familia'),
-    (AppRoutes.health, Icons.medical_services_outlined, 'Saude'),
+    (AppRoutes.family, Icons.favorite_outline, 'Família'),
+    (AppRoutes.notifications, Icons.notifications_outlined, 'Notificações'),
+    (AppRoutes.health, Icons.medical_services_outlined, 'Saúde'),
     (AppRoutes.admin, Icons.admin_panel_settings_outlined, 'Administração'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final isAdminScreen = currentRoute == AppRoutes.admin;
-    final effectiveDisplayName = displayName ?? 'Dra. Ana Silva';
+    final effectiveDisplayName = displayName ?? '';
     final initials = _initialsFor(effectiveDisplayName);
     final visibleMenuItems = menuItems.where((item) => _canAccess(item.$1));
 
@@ -56,7 +66,16 @@ class AppShell extends StatelessWidget {
           ],
         ),
         actions: [
-          if (!isAdminScreen) ...[
+          // N-02: central de notificações real da família.
+          if (role == UserRole.family &&
+              notificationRepository != null &&
+              notificationStudentId != null)
+            NotificationBell(
+              repository: notificationRepository!,
+              studentId: notificationStudentId!,
+            ),
+          // Busca e notificações dos protótipos: só no modo demonstração.
+          if (!isAdminScreen && demoMode && role != UserRole.family) ...[
             IconButton(
                 onPressed: () {},
                 tooltip: 'Buscar',
@@ -65,7 +84,7 @@ class AppShell extends StatelessWidget {
               smallSize: 8,
               child: IconButton(
                   onPressed: () {},
-                  tooltip: 'Notificacoes',
+                  tooltip: 'Notificações',
                   icon: const Icon(Icons.notifications_outlined)),
             ),
           ],
@@ -108,29 +127,42 @@ class AppShell extends StatelessWidget {
               child: SafeArea(
                 child: Column(
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            child: Icon(Icons.extension_outlined),
-                          ),
-                          SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Caminho Azul',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700)),
-                              Text('Plataforma TEA',
-                                  style: TextStyle(
-                                      color: Color(0xFFAFC0D4), fontSize: 12)),
-                            ],
-                          ),
-                        ],
+                    // P2-03: cabeçalho como nó próprio; sem isso o leitor de tela
+                    // anunciava "Caminho Azul Plataforma TEA Sair" no botão Sair.
+                    Semantics(
+                      container: true,
+                      header: true,
+                      child: const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius:
+                                    BorderRadius.all(Radius.circular(10)),
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.all(8),
+                                child: BrandMark.white(size: 24),
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Caminho Azul',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700)),
+                                Text('Plataforma TEA',
+                                    style: TextStyle(
+                                        color: Color(0xFFAFC0D4),
+                                        fontSize: 12)),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const Divider(color: AppColors.sidebarAccent, height: 1),
@@ -183,8 +215,20 @@ class AppShell extends StatelessWidget {
     return currentRoute == route;
   }
 
+  /// Áreas reais por perfil (P1-14). Protótipos só aparecem no modo
+  /// demonstração.
+  static const implementedRoutes = {
+    UserRole.school: [AppRoutes.cases, AppRoutes.students],
+    UserRole.family: [AppRoutes.family, AppRoutes.notifications],
+    UserRole.health: [AppRoutes.health],
+  };
+
   bool _canAccess(String route) {
     final currentRole = role;
+    if (!demoMode && currentRole != null) {
+      final real = implementedRoutes[currentRole];
+      if (real != null) return real.contains(route);
+    }
     if (currentRole == null || currentRole == UserRole.administration) {
       return true;
     }
@@ -192,6 +236,7 @@ class AppShell extends StatelessWidget {
       UserRole.school => {
           AppRoutes.dashboard,
           AppRoutes.cases,
+          AppRoutes.students,
           AppRoutes.observation,
           AppRoutes.reports,
           AppRoutes.timeline,
@@ -199,6 +244,7 @@ class AppShell extends StatelessWidget {
         }.contains(route),
       UserRole.family => {
           AppRoutes.family,
+          AppRoutes.notifications,
           AppRoutes.timeline,
           AppRoutes.documents,
         }.contains(route),
@@ -212,14 +258,13 @@ class AppShell extends StatelessWidget {
     };
   }
 
+  /// Sai das telas protegidas ANTES de encerrar a sessão: assim os listeners
+  /// do usuário que está saindo não falham por falta de autenticação nem
+  /// disparam redirecionamentos e mensagens de erro na tela de login.
   Future<void> _handleLogout(BuildContext context) async {
-    await authService?.signOut();
-
-    if (!context.mounted) {
-      return;
-    }
-
+    final service = authService;
     Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (_) => false);
+    await service?.signOut();
   }
 
   String _initialsFor(String value) {
