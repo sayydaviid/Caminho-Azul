@@ -20,40 +20,154 @@ service cloud.firestore {
         && currentUserData().role == 'admin';
     }
 
+    // Identificadores canônicos em inglês (D-08, P1-17). Valores antigos em
+    // português não são aceitos em novas gravações.
     function isValidRole(role) {
-      return role in ['admin', 'escola', 'familia', 'saude'];
+      return role in ['admin', 'school', 'family', 'health'];
     }
 
+    // Escola exige schoolRole; Saúde exige healthRole; os demais, nenhuma.
     function hasValidSchoolRole(data) {
       return (
-          data.role == 'escola'
-          && data.get('schoolRole', null) in ['professor', 'direcao']
+          data.role == 'school'
+          && data.get('schoolRole', null) in ['teacher', 'director']
+          && data.get('healthRole', null) == null
         ) || (
-          data.role != 'escola'
+          data.role == 'health'
+          && data.get('healthRole', null) in ['ubs_director', 'psychologist']
           && data.get('schoolRole', null) == null
+        ) || (
+          data.role in ['admin', 'family']
+          && data.get('schoolRole', null) == null
+          && data.get('healthRole', null) == null
         );
     }
 
-    function validNewUser() {
+    // Vínculos obrigatórios (D-03, P1-10): Escola e Saúde têm cadastro
+    // profissional com as mesmas instituições; família tem um estudante cujo
+    // familyUid aponta para a conta; admin não tem vínculos.
+    function professionalConsistent(uid) {
+      return (request.resource.data.get('professionalId', null) == null
+          && request.resource.data.get('institutionIds', []) == [])
+        || (request.resource.data.get('professionalId', null) is string
+          && getAfter(/databases/$(database)/documents/professionals/$(request.resource.data.professionalId)).data.userId == uid
+          && getAfter(/databases/$(database)/documents/professionals/$(request.resource.data.professionalId)).data.get('institutionIds', []) == request.resource.data.get('institutionIds', []));
+    }
+
+    function studentsConsistent(uid) {
+      return request.resource.data.get('studentIds', []) is list
+        && request.resource.data.get('studentIds', []).size() <= 1
+        && (request.resource.data.get('studentIds', []).size() == 0
+          || (request.resource.data.role == 'family'
+            && getAfter(/databases/$(database)/documents/students/$(request.resource.data.studentIds[0])).data.familyUid == uid));
+    }
+
+    // P2-05 / D-A01: Escola só atua em escolas e Saúde só em UBS, ativas.
+    // Sem laços nas regras: até 5 instituições, verificadas por índice.
+    function institutionTypeAt(ids, i, type) {
+      return ids.size() <= i
+        || (get(/databases/$(database)/documents/institutions/$(ids[i])).data.get('type', null) == type
+          && get(/databases/$(database)/documents/institutions/$(ids[i])).data.get('active', false) == true);
+    }
+
+    function institutionsOfType(ids, type) {
+      return ids is list && ids.size() >= 1 && ids.size() <= 5
+        && institutionTypeAt(ids, 0, type) && institutionTypeAt(ids, 1, type)
+        && institutionTypeAt(ids, 2, type) && institutionTypeAt(ids, 3, type)
+        && institutionTypeAt(ids, 4, type);
+    }
+
+    function linksValidForRole(uid) {
+      return (request.resource.data.role in ['school', 'health']
+          && request.resource.data.get('professionalId', null) is string
+          && request.resource.data.get('institutionIds', []).size() >= 1
+          && request.resource.data.get('studentIds', []) == []
+          && institutionsOfType(request.resource.data.institutionIds,
+            request.resource.data.role == 'school' ? 'school' : 'ubs')
+          && professionalConsistent(uid))
+        || (request.resource.data.role == 'family'
+          && request.resource.data.get('professionalId', null) == null
+          && request.resource.data.get('institutionIds', []) == []
+          && request.resource.data.get('studentIds', []).size() == 1
+          && studentsConsistent(uid))
+        || (request.resource.data.role == 'admin'
+          && request.resource.data.get('professionalId', null) == null
+          && request.resource.data.get('institutionIds', []) == []
+          && request.resource.data.get('studentIds', []) == []);
+    }
+
+    // ---------------- P2-05: auditoria imposta pelas regras ----------------
+    // Toda gravação administrativa aponta, por lastAuditId, para um log gravado
+    // no mesmo batch pelo próprio admin; o log só existe se o alvo o referenciar
+    // (sondas P7/P7b). Logs complementares usam o sufixo -role/-active/-assoc.
+    function auditPath(id) {
+      return /databases/$(database)/documents/adminAuditLogs/$(id);
+    }
+
+    function auditOk(id, targetType, targetId, actions) {
+      return id is string && targetId is string
+        && existsAfter(auditPath(id))
+        && getAfter(auditPath(id)).data.actorUid == request.auth.uid
+        && getAfter(auditPath(id)).data.createdAt == request.time
+        && getAfter(auditPath(id)).data.targetType == targetType
+        && getAfter(auditPath(id)).data.targetId == targetId
+        && getAfter(auditPath(id)).data.action in actions;
+    }
+
+    function newAuditId() {
+      return request.resource.data.get('lastAuditId', null) is string
+        && request.resource.data.get('lastAuditId', null) != resource.data.get('lastAuditId', null);
+    }
+
+    function userActions() {
+      return ['user.create', 'user.update', 'user.role.update', 'user.activate',
+        'user.deactivate', 'association.update'];
+    }
+
+    function professionalActions() {
+      return ['professional.create', 'professional.update'];
+    }
+
+    function auditActions() {
+      return {
+        'user': userActions(),
+        'professional': professionalActions(),
+        'institution': ['institution.create', 'institution.update'],
+        'localNetwork': ['localNetwork.create', 'localNetwork.update'],
+        'parameter': ['parameter.create', 'parameter.update']
+      };
+    }
+
+    function auditCollections() {
+      return {
+        'user': 'users', 'professional': 'professionals', 'institution': 'institutions',
+        'localNetwork': 'localNetworks', 'parameter': 'adminParameters'
+      };
+    }
+
+    function validNewUser(uid) {
       return request.resource.data.keys().hasAll([
           'firstName', 'lastName', 'name', 'email', 'role', 'active',
-          'schoolRole', 'professionalId', 'createdAt', 'updatedAt', 'createdBy',
-          'lastAccessAt'
+          'schoolRole', 'healthRole', 'professionalId', 'createdAt', 'updatedAt',
+          'createdBy', 'lastAccessAt', 'lastAuditId'
         ])
         && request.resource.data.keys().hasOnly([
           'firstName', 'lastName', 'name', 'email', 'role', 'active',
-          'schoolRole', 'professionalId', 'createdAt', 'updatedAt', 'createdBy',
-          'lastAccessAt'
+          'schoolRole', 'healthRole', 'professionalId', 'institutionIds',
+          'studentIds', 'createdAt', 'updatedAt', 'createdBy', 'lastAccessAt',
+          'lastAuditId'
         ])
-        && request.resource.data.firstName is string
-        && request.resource.data.lastName is string
-        && request.resource.data.name is string
-        && request.resource.data.email is string
+        && isText(request.resource.data.firstName, 1, 80)
+        && isText(request.resource.data.lastName, 0, 120)
+        && isText(request.resource.data.name, 1, 200)
+        && isText(request.resource.data.email, 3, 200)
         && request.resource.data.active is bool
+        && auditOk(request.resource.data.lastAuditId, 'user', uid, ['user.create'])
         && (request.resource.data.professionalId == null
           || request.resource.data.professionalId is string)
         && isValidRole(request.resource.data.role)
         && hasValidSchoolRole(request.resource.data)
+        && linksValidForRole(uid)
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
@@ -73,8 +187,9 @@ service cloud.firestore {
     match /users/{uid} {
       allow get: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
-      allow create: if isAdmin() && validNewUser();
-      allow delete: if isAdmin() && request.auth.uid != uid;
+      allow create: if isAdmin() && validNewUser(uid);
+      // "Excluir usuário" é desativação lógica (D-15): perfis não são apagados.
+      allow delete: if false;
       allow update: if (
           isActiveUser()
           && request.auth.uid == uid
@@ -85,12 +200,51 @@ service cloud.firestore {
           isAdmin()
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly([
-              'firstName', 'lastName', 'name', 'role', 'active',
-              'schoolRole', 'professionalId', 'updatedAt'
+              'firstName', 'lastName', 'name', 'role', 'active', 'schoolRole',
+              'healthRole', 'professionalId', 'institutionIds', 'studentIds', 'updatedAt',
+              'lastAuditId'
             ])
-          && isValidRole(request.resource.data.role)
-          && hasValidSchoolRole(request.resource.data)
-          && request.resource.data.active is bool
+          // P2-05 (sondas P7b/P8): toda alteração tem log no mesmo batch; troca de
+          // role/subrole e de status exigem o log específico.
+          && newAuditId()
+          && (auditOk(request.resource.data.lastAuditId, 'user', uid,
+                ['user.update', 'user.deactivate'])
+            || auditOk(request.resource.data.lastAuditId, 'professional',
+                request.resource.data.get('professionalId', null), professionalActions())
+            || auditOk(request.resource.data.lastAuditId, 'professional',
+                resource.data.get('professionalId', null), professionalActions()))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'schoolRole', 'healthRole'])
+            || auditOk(request.resource.data.lastAuditId + '-role', 'user', uid, ['user.role.update']))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['active'])
+            || auditOk(request.resource.data.lastAuditId, 'user', uid, ['user.deactivate'])
+            || auditOk(request.resource.data.lastAuditId + '-active', 'user', uid,
+                ['user.activate', 'user.deactivate']))
+          // P2-06: o profissional anterior deixa de apontar para esta conta.
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['professionalId'])
+            || resource.data.get('professionalId', null) == null
+            || getAfter(/databases/$(database)/documents/professionals/$(resource.data.professionalId)).data.get('userId', null) != uid)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['firstName', 'lastName', 'name'])
+            || (isText(request.resource.data.get('firstName', ''), 1, 80)
+              && isText(request.resource.data.get('lastName', ''), 0, 120)
+              && isText(request.resource.data.get('name', ''), 1, 200)))
+          // Role/subrole/status só são revalidados quando alterados (P0-04): vincular
+          // um profissional a um documento antigo não exige normalizar o perfil.
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'schoolRole', 'healthRole'])
+            || (isValidRole(request.resource.data.role)
+              && hasValidSchoolRole(request.resource.data)))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['active'])
+            || request.resource.data.active is bool)
+          // Vínculos revalidados quando alterados (P1-10).
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['professionalId', 'institutionIds'])
+            || professionalConsistent(uid))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['studentIds'])
+            || studentsConsistent(uid))
+          // Perfis canônicos mantêm o formato de vínculos do seu papel; documentos
+          // antigos (sem acesso operacional) só precisam de vínculos consistentes.
+          && (!request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['role', 'professionalId', 'institutionIds', 'studentIds'])
+            || !isValidRole(request.resource.data.get('role', null))
+            || linksValidForRole(uid))
           && (request.auth.uid != uid || (
             request.resource.data.role == 'admin'
             && request.resource.data.active == true
@@ -99,40 +253,1073 @@ service cloud.firestore {
         );
     }
 
+    // Cadastros: no create o documento inteiro segue o schema; no update só os
+    // campos alterados são validados (documentos antigos continuam editáveis).
+    function changedOnly(allowed) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
+    }
+
+    function changed(field) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([field]);
+    }
+
+    function validField(field, check) {
+      return !changed(field) || check;
+    }
+
+    function institutionKeys() {
+      return ['name', 'type', 'cnpj', 'email', 'phone', 'address', 'active',
+        'createdAt', 'updatedAt', 'createdBy', 'lastAuditId'];
+    }
+
+    // Sonda P14: tipos e valores validados.
+    function institutionFieldsValid(d) {
+      return isText(d.get('name', ''), 2, 160)
+        && d.get('type', null) in ['school', 'ubs']
+        && d.get('active', null) is bool
+        && isOptionalText(d.get('cnpj', null), 30)
+        && isOptionalText(d.get('email', null), 160)
+        && isOptionalText(d.get('phone', null), 40)
+        && (d.get('address', null) == null || d.get('address', null) is map);
+    }
+
     match /institutions/{institutionId} {
       allow read: if isAdmin() || (isActiveUser() && resource.data.active == true);
-      allow create: if isAdmin() && immutableCreationFields();
-      allow update: if isAdmin() && creationFieldsUnchanged();
+      allow create: if isAdmin() && immutableCreationFields()
+        && request.resource.data.keys().hasOnly(institutionKeys())
+        && institutionFieldsValid(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && auditOk(request.resource.data.get('lastAuditId', null), 'institution', institutionId,
+          ['institution.create']);
+      allow update: if isAdmin() && creationFieldsUnchanged()
+        && changedOnly(institutionKeys())
+        && validField('name', isText(request.resource.data.name, 2, 160))
+        // Tipo canônico é imutável: professores e psicólogos dependem dele.
+        && validField('type', request.resource.data.type in ['school', 'ubs']
+          && !(resource.data.get('type', null) in ['school', 'ubs']))
+        && validField('active', request.resource.data.active is bool)
+        && validField('cnpj', isOptionalText(request.resource.data.cnpj, 30))
+        && validField('email', isOptionalText(request.resource.data.email, 160))
+        && validField('phone', isOptionalText(request.resource.data.phone, 40))
+        && validField('address', request.resource.data.address == null || request.resource.data.address is map)
+        && request.resource.data.updatedAt == request.time
+        && newAuditId()
+        && auditOk(request.resource.data.lastAuditId, 'institution', institutionId,
+          ['institution.update']);
       allow delete: if false;
     }
 
+    function professionalKeys() {
+      return ['firstName', 'lastName', 'name', 'email', 'phone', 'specialty',
+        'registrationNumber', 'userId', 'institutionIds', 'role', 'subrole', 'active',
+        'createdAt', 'updatedAt', 'createdBy', 'lastAuditId'];
+    }
+
     match /professionals/{professionalId} {
-      allow read: if isAdmin() || (isActiveUser() && resource.data.active == true);
-      allow create: if isAdmin() && immutableCreationFields();
-      allow update: if isAdmin() && creationFieldsUnchanged();
+      // Sonda P9 (RNF02): contatos de profissionais só para o admin e para a
+      // equipe da Escola e da Saúde, e só de profissionais ativos que atuam nas
+      // mesmas instituições (atribuição pelas Direções e nomes dos professores
+      // do caso). Família e outras instituições não leem.
+      allow read: if isAdmin()
+        || ((hasRole('school') || hasRole('health'))
+          && resource.data.active == true
+          && resource.data.institutionIds.hasAny(me().get('institutionIds', [])));
+      allow create: if isAdmin() && immutableCreationFields() && userLinkConsistent()
+        && request.resource.data.keys().hasOnly(professionalKeys())
+        && professionalFieldsValid(request.resource.data)
+        && auditOk(request.resource.data.get('lastAuditId', null), 'professional', professionalId,
+          ['professional.create']);
+      allow update: if isAdmin() && creationFieldsUnchanged() && userLinkConsistent()
+        && changedOnly(professionalKeys())
+        && validField('name', isText(request.resource.data.name, 1, 200))
+        && validField('active', request.resource.data.active is bool)
+        && validField('institutionIds', request.resource.data.institutionIds is list
+          && request.resource.data.institutionIds.size() <= 5)
+        && newAuditId()
+        && (auditOk(request.resource.data.lastAuditId, 'professional', professionalId, professionalActions())
+          || auditOk(request.resource.data.lastAuditId, 'user', request.resource.data.get('userId', null), userActions())
+          || auditOk(request.resource.data.lastAuditId, 'user', resource.data.get('userId', null), userActions()))
+        // P2-06: ao trocar de conta, a conta anterior deixa de apontar para cá.
+        && (!changed('userId') || resource.data.get('userId', null) == null
+          || getAfter(/databases/$(database)/documents/users/$(resource.data.userId)).data.get('professionalId', null) != professionalId);
       allow delete: if false;
+
+      function professionalFieldsValid(d) {
+        return isText(d.get('name', ''), 1, 200)
+          && d.get('active', null) is bool
+          && d.get('institutionIds', null) is list
+          && d.institutionIds.size() <= 5
+          && isOptionalText(d.get('email', null), 200)
+          && isOptionalText(d.get('phone', null), 40)
+          && isOptionalText(d.get('specialty', null), 120)
+          && isOptionalText(d.get('registrationNumber', null), 60);
+      }
+
+      // O usuário vinculado aponta para este profissional, tem as mesmas
+      // instituições e a mesma função (a lista de professores e psicólogos
+      // usa role/subrole do profissional).
+      function userLinkConsistent() {
+        return request.resource.data.get('userId', null) == null
+          || (getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('professionalId', null) == professionalId
+            && getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('institutionIds', []) == request.resource.data.get('institutionIds', [])
+            && (request.resource.data.get('subrole', null) == null
+              || (getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('role', null) == request.resource.data.get('role', null)
+                && request.resource.data.subrole in [
+                  getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('schoolRole', null),
+                  getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('healthRole', null)])));
+      }
+    }
+
+    function networkKeys() {
+      return ['name', 'description', 'institutionIds', 'active', 'createdAt', 'updatedAt',
+        'createdBy', 'lastAuditId'];
     }
 
     match /localNetworks/{networkId} {
       allow read: if isAdmin() || (isActiveUser() && resource.data.active == true);
-      allow create: if isAdmin() && immutableCreationFields();
-      allow update: if isAdmin() && creationFieldsUnchanged();
+      allow create: if isAdmin() && immutableCreationFields()
+        && request.resource.data.keys().hasOnly(networkKeys())
+        && isText(request.resource.data.get('name', ''), 2, 160)
+        && isOptionalText(request.resource.data.get('description', null), 1000)
+        && request.resource.data.get('institutionIds', null) is list
+        && request.resource.data.get('active', null) is bool
+        && auditOk(request.resource.data.get('lastAuditId', null), 'localNetwork', networkId,
+          ['localNetwork.create']);
+      allow update: if isAdmin() && creationFieldsUnchanged()
+        && changedOnly(networkKeys())
+        && validField('name', isText(request.resource.data.name, 2, 160))
+        && validField('description', isOptionalText(request.resource.data.description, 1000))
+        && validField('institutionIds', request.resource.data.institutionIds is list)
+        && validField('active', request.resource.data.active is bool)
+        && newAuditId()
+        && auditOk(request.resource.data.lastAuditId, 'localNetwork', networkId,
+          ['localNetwork.update']);
       allow delete: if false;
+    }
+
+    function parameterKeys() {
+      return ['title', 'items', 'active', 'createdAt', 'updatedAt', 'createdBy', 'lastAuditId'];
     }
 
     match /adminParameters/{parameterId} {
       allow read: if isActiveUser();
-      allow create: if isAdmin() && immutableCreationFields();
-      allow update: if isAdmin() && creationFieldsUnchanged();
+      allow create: if isAdmin() && immutableCreationFields()
+        && request.resource.data.keys().hasOnly(parameterKeys())
+        && isText(request.resource.data.get('title', ''), 1, 160)
+        && request.resource.data.get('items', null) is list
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.get('active', null) is bool
+        && auditOk(request.resource.data.get('lastAuditId', null), 'parameter', parameterId,
+          ['parameter.create']);
+      allow update: if isAdmin() && creationFieldsUnchanged()
+        && changedOnly(parameterKeys())
+        && validField('title', isText(request.resource.data.title, 1, 160))
+        && validField('items', request.resource.data.items is list
+          && request.resource.data.items.size() <= 100)
+        && validField('active', request.resource.data.active is bool)
+        && newAuditId()
+        && auditOk(request.resource.data.lastAuditId, 'parameter', parameterId,
+          ['parameter.update']);
       allow delete: if false;
     }
 
     match /adminAuditLogs/{logId} {
       allow read: if isAdmin();
+      // Sonda P7: o log só pode ser gravado junto da alteração que descreve (o
+      // alvo referencia o log por lastAuditId no mesmo batch).
       allow create: if isAdmin()
+        && request.resource.data.keys().hasAll(['action', 'actorUid', 'targetType',
+          'targetId', 'before', 'after', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['action', 'actorUid', 'targetType',
+          'targetId', 'before', 'after', 'createdAt'])
         && request.resource.data.actorUid == request.auth.uid
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt == request.time
+        && logId.matches('^[A-Za-z0-9]{8,40}(-(role|active|assoc))?$')
+        && request.resource.data.targetType in auditActions()
+        && request.resource.data.action in auditActions()[request.resource.data.targetType]
+        && request.resource.data.targetId is string
+        && (request.resource.data.before == null || request.resource.data.before is map)
+        && (request.resource.data.after == null || request.resource.data.after is map)
+        && getAfter(/databases/$(database)/documents/$(auditCollections()[request.resource.data.targetType])/$(request.resource.data.targetId)).data.get('lastAuditId', null)
+          == logId.split('-')[0];
       allow update, delete: if false;
+    }
+
+    // ===================================================================
+    // Domínio do acompanhamento (P0-03) — ver docs/MODELO_DADOS.md.
+    // Roles e subroles canônicas em inglês (D-08). Documentos com valores
+    // antigos em português NÃO recebem permissão operacional (sem fallback).
+    // Toda transição crítica referencia, por lastEventId, um evento imutável
+    // gravado no mesmo batch (verificado com getAfter).
+    // ===================================================================
+
+    function me() {
+      return currentUserData();
+    }
+
+    function hasRole(role) {
+      return isActiveUser() && me().role == role;
+    }
+
+    function isTeacher() {
+      return hasRole('school') && me().get('schoolRole', null) == 'teacher';
+    }
+
+    function isSchoolDirector() {
+      return hasRole('school') && me().get('schoolRole', null) == 'director';
+    }
+
+    function isUbsDirector() {
+      return hasRole('health') && me().get('healthRole', null) == 'ubs_director';
+    }
+
+    function isPsychologist() {
+      return hasRole('health') && me().get('healthRole', null) == 'psychologist';
+    }
+
+    function isFamily() {
+      return hasRole('family');
+    }
+
+    function memberOf(institutionId) {
+      return institutionId in me().get('institutionIds', []);
+    }
+
+    function guardianOf(studentId) {
+      return studentId in me().get('studentIds', []);
+    }
+
+    function myName() {
+      return me().get('name', '');
+    }
+
+    function validActorRole(role) {
+      return (isTeacher() && role == 'school/teacher')
+        || (isSchoolDirector() && role == 'school/director')
+        || (isUbsDirector() && role == 'health/ubs_director')
+        || (isPsychologist() && role == 'health/psychologist');
+    }
+
+    function affected() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function stampedCreate(data) {
+      return data.createdBy == request.auth.uid
+        && data.updatedBy == request.auth.uid
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function stampedUpdate() {
+      return request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy;
+    }
+
+    function isText(value, min, max) {
+      return value is string && value.size() >= min && value.size() <= max;
+    }
+
+    function isOptionalText(value, max) {
+      return value == null || (value is string && value.size() <= max);
+    }
+
+    function casePath(caseId) {
+      return /databases/$(database)/documents/cases/$(caseId);
+    }
+
+    function eventPath(caseId, eventId) {
+      return /databases/$(database)/documents/cases/$(caseId)/timelineEvents/$(eventId);
+    }
+
+    function referralPath(referralId) {
+      return /databases/$(database)/documents/referrals/$(referralId);
+    }
+
+    function notePath(referralId, noteId) {
+      return /databases/$(database)/documents/referrals/$(referralId)/notes/$(noteId);
+    }
+
+    function caseAfter(caseId) {
+      return getAfter(casePath(caseId)).data;
+    }
+
+    function referralAfter(referralId) {
+      return getAfter(referralPath(referralId)).data;
+    }
+
+    // O evento referenciado foi gravado pelo próprio usuário com o tipo esperado.
+    function eventBy(caseId, eventId, type) {
+      return getAfter(eventPath(caseId, eventId)).data.type == type
+        && getAfter(eventPath(caseId, eventId)).data.actorUid == request.auth.uid;
+    }
+
+    function teacherLinked(c) {
+      return isTeacher()
+        && request.auth.uid in c.teacherUids
+        && memberOf(c.schoolInstitutionId);
+    }
+
+    function schoolCanRead(c) {
+      return teacherLinked(c)
+        || (isSchoolDirector() && memberOf(c.schoolInstitutionId));
+    }
+
+    function familyCanRead(c) {
+      return isFamily() && guardianOf(c.studentId) && c.familyVisible == true;
+    }
+
+    function healthCanReadReferral(r) {
+      return (isUbsDirector() && memberOf(r.destinationInstitutionId))
+        || (isPsychologist() && r.assignedPsychologistUid == request.auth.uid);
+    }
+
+    // ---------------- students ----------------
+    match /students/{studentId} {
+      allow get, list: if isAdmin()
+        || ((isTeacher() || isSchoolDirector()) && memberOf(resource.data.schoolInstitutionId))
+        || (isFamily() && resource.data.familyUid == request.auth.uid);
+
+      allow create: if isSchoolDirector()
+        && request.resource.data.keys().hasAll(['name', 'grade', 'schoolInstitutionId',
+          'familyUid', 'active', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'])
+        && request.resource.data.keys().hasOnly(['name', 'grade', 'schoolInstitutionId',
+          'familyUid', 'active', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'])
+        && memberOf(request.resource.data.schoolInstitutionId)
+        && isText(request.resource.data.name, 2, 120)
+        && isOptionalText(request.resource.data.grade, 60)
+        && request.resource.data.familyUid == null
+        && request.resource.data.active == true
+        && stampedCreate(request.resource.data);
+
+      allow update: if stampedUpdate()
+        && request.resource.data.schoolInstitutionId == resource.data.schoolInstitutionId
+        && ((
+          isSchoolDirector()
+          && memberOf(resource.data.schoolInstitutionId)
+          && affected().hasOnly(['name', 'grade', 'active', 'updatedAt', 'updatedBy'])
+          && isText(request.resource.data.name, 2, 120)
+          && isOptionalText(request.resource.data.grade, 60)
+          && request.resource.data.active is bool
+        ) || (
+          isAdmin()
+          && affected().hasOnly(['familyUid', 'updatedAt', 'updatedBy'])
+          && (resource.data.familyUid == null || request.resource.data.familyUid == null)
+          && familyLinkValid(studentId, request.resource.data.familyUid)
+          && familyLinkAudited()
+        ));
+
+      // P2-05: o vínculo família↔estudante só muda junto da conta familiar
+      // auditada no mesmo batch.
+      function familyLinkAudited() {
+        let fam = request.resource.data.familyUid != null
+          ? request.resource.data.familyUid : resource.data.familyUid;
+        return fam is string
+          && auditOk(getAfter(/databases/$(database)/documents/users/$(fam)).data.get('lastAuditId', null),
+            'user', fam, userActions());
+      }
+
+      allow delete: if false;
+
+      function familyLinkValid(sid, familyUid) {
+        return familyUid == null || (
+          getAfter(/databases/$(database)/documents/users/$(familyUid)).data.role == 'family'
+          && getAfter(/databases/$(database)/documents/users/$(familyUid)).data.active == true
+          && sid in getAfter(/databases/$(database)/documents/users/$(familyUid)).data.get('studentIds', [])
+        );
+      }
+    }
+
+    // ---------------- caseLocks (P2-06): um caso em andamento por estudante ----------------
+    // Criada com o caso; só é reocupada por um caso novo depois que o anterior
+    // foi concluído. Nunca apagada.
+    match /caseLocks/{studentId} {
+      allow get: if (isTeacher() || isSchoolDirector())
+        && memberOf(resource.data.schoolInstitutionId);
+      allow create: if isTeacher() && caseLockValid();
+      allow update: if isTeacher() && caseLockValid()
+        && get(casePath(resource.data.caseId)).data.status == 'concluido';
+      allow list, delete: if false;
+
+      function caseLockValid() {
+        return request.resource.data.keys().hasAll(['caseId', 'schoolInstitutionId', 'createdAt', 'createdBy'])
+          && request.resource.data.keys().hasOnly(['caseId', 'schoolInstitutionId', 'createdAt', 'createdBy'])
+          && request.resource.data.caseId is string
+          && caseAfter(request.resource.data.caseId).studentId == studentId
+          && caseAfter(request.resource.data.caseId).createdAt == request.time
+          && caseAfter(request.resource.data.caseId).schoolInstitutionId == request.resource.data.schoolInstitutionId
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+      }
+    }
+
+    // ---------------- cases (somente metadados administrativos) ----------------
+    match /cases/{caseId} {
+      // Direção da UBS lê os metadados enquanto houver encaminhamento ativo
+      // para a sua unidade (matriz: [IU], campos mínimos).
+      allow get, list: if isAdmin() || schoolCanRead(resource.data) || familyCanRead(resource.data)
+        || (isUbsDirector()
+          && resource.data.activeReferrals.values().hasAny(me().get('institutionIds', [])));
+
+      allow create: if isTeacher()
+        && caseKeysValid(request.resource.data)
+        && memberOf(request.resource.data.schoolInstitutionId)
+        && request.resource.data.status == 'rascunho'
+        && request.resource.data.familyVisible == false
+        && request.resource.data.complementOpen == false
+        && request.resource.data.approvedAt == null
+        && request.resource.data.approvedBy == null
+        && request.resource.data.activeReferrals == {}
+        && request.resource.data.primaryTeacherUid == request.auth.uid
+        && request.resource.data.teacherUids == [request.auth.uid]
+        && stampedCreate(request.resource.data)
+        && studentMatches(request.resource.data)
+        && eventBy(caseId, request.resource.data.lastEventId, 'case.created')
+        // P2-06 (RN-20): um caso em andamento por estudante, garantido pela
+        // trava caseLocks/{studentId} gravada no mesmo batch.
+        && getAfter(/databases/$(database)/documents/caseLocks/$(request.resource.data.studentId)).data.caseId == caseId
+        && getAfter(/databases/$(database)/documents/caseLocks/$(request.resource.data.studentId)).data.createdAt == request.time;
+
+      allow update: if caseUpdateCommon()
+        && (teacherTransition() || directorTransition() || ubsTransition());
+
+      allow delete: if false;
+
+      function caseKeysValid(d) {
+        return d.keys().hasAll(['studentId', 'studentName', 'schoolInstitutionId',
+            'primaryTeacherUid', 'teacherUids', 'status', 'familyVisible', 'complementOpen',
+            'approvedAt', 'approvedBy', 'activeReferrals', 'createdAt', 'updatedAt', 'createdBy',
+            'updatedBy', 'lastEventId'])
+          && d.keys().hasOnly(['studentId', 'studentName', 'schoolInstitutionId',
+            'primaryTeacherUid', 'teacherUids', 'status', 'familyVisible', 'complementOpen',
+            'approvedAt', 'approvedBy', 'activeReferrals', 'createdAt', 'updatedAt', 'createdBy',
+            'updatedBy', 'lastEventId']);
+      }
+
+      function studentMatches(d) {
+        return get(/databases/$(database)/documents/students/$(d.studentId)).data.schoolInstitutionId == d.schoolInstitutionId
+          && get(/databases/$(database)/documents/students/$(d.studentId)).data.active == true
+          && get(/databases/$(database)/documents/students/$(d.studentId)).data.name == d.studentName;
+      }
+
+      function caseUpdateCommon() {
+        return stampedUpdate()
+          && request.resource.data.studentId == resource.data.studentId
+          && request.resource.data.studentName == resource.data.studentName
+          && request.resource.data.schoolInstitutionId == resource.data.schoolInstitutionId
+          && request.resource.data.lastEventId != resource.data.lastEventId
+          && resource.data.status != 'concluido';
+      }
+
+      function statusOnly() {
+        return affected().hasOnly(['status', 'updatedAt', 'updatedBy', 'lastEventId']);
+      }
+
+      function moves(from, to) {
+        return resource.data.status in from && request.resource.data.status == to;
+      }
+
+      function ev(type) {
+        return eventBy(caseId, request.resource.data.lastEventId, type);
+      }
+
+      function teacherTransition() {
+        return teacherLinked(resource.data)
+          && statusOnly()
+          && ((moves(['rascunho'], 'aguardando_analise') && ev('case.submitted'))
+            || (moves(['complementacao_solicitada'], 'aguardando_analise') && ev('case.complemented')));
+      }
+
+      function directorTransition() {
+        return isSchoolDirector()
+          && memberOf(resource.data.schoolInstitutionId)
+          && ((statusOnly() && moves(['aguardando_analise'], 'complementacao_solicitada')
+                && ev('case.complementRequested'))
+            || (affected().hasOnly(['status', 'familyVisible', 'approvedAt', 'approvedBy',
+                  'updatedAt', 'updatedBy', 'lastEventId'])
+                && moves(['aguardando_analise'], 'aprovado')
+                && request.resource.data.familyVisible == true
+                && request.resource.data.approvedAt == request.time
+                && request.resource.data.approvedBy == request.auth.uid
+                && ev('case.approved'))
+            || (affected().hasOnly(['status', 'activeReferrals', 'updatedAt', 'updatedBy', 'lastEventId'])
+                && moves(['aprovado'], 'encaminhado')
+                && ev('referral.sent') && referralAdded())
+            || (affected().hasOnly(['activeReferrals', 'updatedAt', 'updatedBy', 'lastEventId'])
+                && resource.data.status in ['encaminhado', 'em_acompanhamento']
+                && ev('referral.sent') && referralAdded())
+            || (statusOnly() && moves(['aprovado', 'encaminhado', 'em_acompanhamento'], 'concluido')
+                && resource.data.activeReferrals.size() == 0
+                && ev('case.concluded'))
+            || (affected().hasOnly(['teacherUids', 'primaryTeacherUid', 'updatedAt', 'updatedBy',
+                  'lastEventId'])
+                && request.resource.data.teacherUids is list
+                && request.resource.data.teacherUids.size() >= 1
+                && request.resource.data.teacherUids.size() <= 10
+                // P2-06: sem professor repetido no caso.
+                && request.resource.data.teacherUids.toSet().size() == request.resource.data.teacherUids.size()
+                && request.resource.data.primaryTeacherUid in request.resource.data.teacherUids
+                && teacherOfSchool(request.resource.data.primaryTeacherUid, resource.data.schoolInstitutionId)
+                && ev('case.teachersUpdated'))
+            || (affected().hasOnly(['complementOpen', 'updatedAt', 'updatedBy', 'lastEventId'])
+                && resource.data.status in ['encaminhado', 'em_acompanhamento']
+                && ((request.resource.data.complementOpen == true && ev('case.ubsComplementForwarded'))
+                  || (request.resource.data.complementOpen == false && ev('case.ubsComplementClosed')))));
+      }
+
+      function teacherOfSchool(teacherUid, schoolId) {
+        return get(/databases/$(database)/documents/users/$(teacherUid)).data.role == 'school'
+          && get(/databases/$(database)/documents/users/$(teacherUid)).data.schoolRole == 'teacher'
+          && get(/databases/$(database)/documents/users/$(teacherUid)).data.active == true
+          && schoolId in get(/databases/$(database)/documents/users/$(teacherUid)).data.get('institutionIds', []);
+      }
+
+      // Encaminhamentos ativos: mapa {referralId: ubsId}. Um ativo por UBS; a
+      // conclusão do caso exige mapa vazio (D-12).
+      function lastEvent() {
+        return getAfter(eventPath(caseId, request.resource.data.lastEventId)).data;
+      }
+
+      function referralAdded() {
+        let rid = lastEvent().referralId;
+        let d = request.resource.data.activeReferrals.diff(resource.data.activeReferrals);
+        return d.addedKeys() == [rid].toSet()
+          && d.removedKeys().size() == 0
+          && d.changedKeys().size() == 0
+          && request.resource.data.activeReferrals[rid] == referralAfter(rid).destinationInstitutionId
+          && !(referralAfter(rid).destinationInstitutionId in resource.data.activeReferrals.values());
+      }
+
+      function referralRemoved() {
+        let e = lastEvent();
+        let d = request.resource.data.activeReferrals.diff(resource.data.activeReferrals);
+        return e.actorUid == request.auth.uid
+          && e.type in ['referral.returned', 'referral.refused', 'referral.finalized']
+          && d.removedKeys() == [e.referralId].toSet()
+          && d.addedKeys().size() == 0
+          && d.changedKeys().size() == 0
+          && memberOf(referralAfter(e.referralId).destinationInstitutionId)
+          && referralAfter(e.referralId).status in ['devolvido', 'recusado', 'finalizado'];
+      }
+
+      // A atribuição do primeiro psicólogo leva o caso a "em_acompanhamento";
+      // o encerramento de um encaminhamento o retira dos ativos.
+      function ubsTransition() {
+        return isUbsDirector()
+          && ((statusOnly()
+              && moves(['encaminhado'], 'em_acompanhamento')
+              && ev('referral.assigned')
+              && referralAfter(lastEvent().referralId).caseId == caseId
+              && memberOf(referralAfter(lastEvent().referralId).destinationInstitutionId))
+            || (affected().hasOnly(['activeReferrals', 'updatedAt', 'updatedBy', 'lastEventId'])
+              && referralRemoved()));
+      }
+
+      // ---------------- conteúdo pedagógico interno ----------------
+      function schoolCanWrite() {
+        return teacherLinked(get(casePath(caseId)).data)
+          && (get(casePath(caseId)).data.status in ['rascunho', 'complementacao_solicitada']
+            || get(casePath(caseId)).data.complementOpen == true);
+      }
+
+      match /observations/{observationId} {
+        allow get, list: if schoolCanRead(get(casePath(caseId)).data);
+        allow create: if schoolCanWrite()
+          && request.resource.data.keys().hasAll(['authorUid', 'authorName', 'context',
+            'description', 'observedAt', 'createdAt', 'updatedAt'])
+          && request.resource.data.keys().hasOnly(['authorUid', 'authorName', 'context',
+            'description', 'observedAt', 'createdAt', 'updatedAt'])
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorName == myName()
+          && isText(request.resource.data.context, 1, 200)
+          && isText(request.resource.data.description, 1, 5000)
+          && request.resource.data.observedAt is timestamp
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if schoolCanWrite()
+          && resource.data.authorUid == request.auth.uid
+          && affected().hasOnly(['context', 'description', 'observedAt', 'updatedAt'])
+          && isText(request.resource.data.context, 1, 200)
+          && isText(request.resource.data.description, 1, 5000)
+          && request.resource.data.observedAt is timestamp
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      match /pedagogicalRecords/{recordId} {
+        allow get, list: if schoolCanRead(get(casePath(caseId)).data);
+        allow create: if schoolCanWrite()
+          && request.resource.data.keys().hasAll(['authorUid', 'authorName', 'summary',
+            'actions', 'observationIds', 'createdAt', 'updatedAt'])
+          && request.resource.data.keys().hasOnly(['authorUid', 'authorName', 'summary',
+            'actions', 'observationIds', 'createdAt', 'updatedAt'])
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorName == myName()
+          && isText(request.resource.data.summary, 1, 5000)
+          && request.resource.data.actions is list
+          && request.resource.data.actions.size() <= 20
+          && request.resource.data.observationIds is list
+          && request.resource.data.observationIds.size() <= 50
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if schoolCanWrite()
+          && resource.data.authorUid == request.auth.uid
+          && affected().hasOnly(['summary', 'actions', 'observationIds', 'updatedAt'])
+          && isText(request.resource.data.summary, 1, 5000)
+          && request.resource.data.actions is list
+          && request.resource.data.actions.size() <= 20
+          && request.resource.data.observationIds is list
+          && request.resource.data.observationIds.size() <= 50
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      // ---------------- linha do tempo (imutável) ----------------
+      match /timelineEvents/{eventId} {
+        allow get, list: if eventReadable(get(casePath(caseId)).data, resource.data);
+
+        allow create: if request.resource.data.keys().hasAll(['type', 'visibility', 'audience',
+            'referralId', 'refId', 'actorUid', 'actorName', 'actorRole', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['type', 'visibility', 'audience',
+            'referralId', 'refId', 'actorUid', 'actorName', 'actorRole', 'createdAt'])
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.actorName == myName()
+          && validActorRole(request.resource.data.actorRole)
+          && request.resource.data.createdAt == request.time
+          && (request.resource.data.referralId == null || request.resource.data.referralId is string)
+          && (request.resource.data.refId == null || request.resource.data.refId is string)
+          && eventVisibilityValid(request.resource.data)
+          && eventActorValid(request.resource.data)
+          && eventParentValid(request.resource.data)
+          && familyNotified(request.resource.data);
+
+        allow update, delete: if false;
+
+        function eventReadable(c, e) {
+          return (e.visibility in ['familia', 'interno'] && schoolCanRead(c))
+            || (e.visibility == 'restrito' && 'school' in e.audience && schoolCanRead(c))
+            || (e.visibility == 'familia' && familyCanRead(c))
+            || (e.visibility == 'familia' && e.referralId != null
+              && healthCanReadReferral(get(referralPath(e.referralId)).data));
+        }
+
+        function teacherTypes() {
+          return ['case.created', 'case.submitted', 'case.complemented',
+            'observation.created', 'pedagogicalRecord.created'];
+        }
+
+        function directorCaseTypes() {
+          return ['case.complementRequested', 'case.approved', 'case.concluded',
+            'case.teachersUpdated', 'case.ubsComplementForwarded', 'case.ubsComplementClosed'];
+        }
+
+        function directorReferralTypes() {
+          return ['referral.sent', 'referral.complementAnswered'];
+        }
+
+        function ubsTypes() {
+          return ['referral.received', 'referral.assigned', 'referral.transferred',
+            'referral.complementRequested', 'referral.returned', 'referral.refused',
+            'referral.finalized'];
+        }
+
+        function psychologistTypes() {
+          return ['referral.statusChanged', 'healthReturn.created'];
+        }
+
+        function internalTypes() {
+          return ['observation.created', 'pedagogicalRecord.created', 'case.teachersUpdated',
+            'case.ubsComplementForwarded', 'case.ubsComplementClosed'];
+        }
+
+        // Visibilidade fixa por tipo (D-16); só a devolutiva depende da audiência.
+        function eventVisibilityValid(e) {
+          return (e.type in internalTypes() && e.visibility == 'interno' && e.audience == [])
+            || (e.type != 'healthReturn.created' && !(e.type in internalTypes())
+              && e.visibility == 'familia' && e.audience == [])
+            || (e.type == 'healthReturn.created' && e.refId != null && healthReturnVisibility(e));
+        }
+
+        function healthReturnVisibility(e) {
+          return ('family' in getAfter(/databases/$(database)/documents/healthReturns/$(e.refId)).data.audience
+              && e.visibility == 'familia' && e.audience == [])
+            || (!('family' in getAfter(/databases/$(database)/documents/healthReturns/$(e.refId)).data.audience)
+              && e.visibility == 'restrito' && e.audience == ['school']);
+        }
+
+        function eventActorValid(e) {
+          return (e.type in teacherTypes() && e.referralId == null
+              && teacherLinked(caseAfter(caseId)))
+            || (e.type in directorCaseTypes() && e.referralId == null
+              && isSchoolDirector() && memberOf(caseAfter(caseId).schoolInstitutionId))
+            || (e.type in directorReferralTypes() && e.referralId != null
+              && isSchoolDirector() && memberOf(caseAfter(caseId).schoolInstitutionId)
+              && referralAfter(e.referralId).caseId == caseId)
+            || (e.type in ubsTypes() && e.referralId != null && isUbsDirector()
+              && referralAfter(e.referralId).caseId == caseId
+              && memberOf(referralAfter(e.referralId).destinationInstitutionId))
+            || (e.type in psychologistTypes() && e.referralId != null && isPsychologist()
+              && referralAfter(e.referralId).caseId == caseId
+              && referralAfter(e.referralId).assignedPsychologistUid == request.auth.uid);
+        }
+
+        // N-03: evento relevante e visível à família só existe com a
+        // notificação dela no mesmo batch (id determinístico, sem duplicação).
+        function familyNotified(e) {
+          let notificationId = caseId + '_' + eventId;
+          return !(e.type in familyNotificationTypes())
+            || e.visibility != 'familia'
+            || existsAfter(/databases/$(database)/documents/notifications/$(notificationId));
+        }
+
+        // O evento só existe junto da alteração que o originou (mesmo batch).
+        function eventParentValid(e) {
+          return (e.type == 'observation.created' && e.refId != null
+              && getAfter(/databases/$(database)/documents/cases/$(caseId)/observations/$(e.refId)).data.authorUid == request.auth.uid
+              && getAfter(/databases/$(database)/documents/cases/$(caseId)/observations/$(e.refId)).data.createdAt == request.time)
+            || (e.type == 'pedagogicalRecord.created' && e.refId != null
+              && getAfter(/databases/$(database)/documents/cases/$(caseId)/pedagogicalRecords/$(e.refId)).data.authorUid == request.auth.uid
+              && getAfter(/databases/$(database)/documents/cases/$(caseId)/pedagogicalRecords/$(e.refId)).data.createdAt == request.time)
+            || (e.referralId == null && !(e.type in ['observation.created', 'pedagogicalRecord.created'])
+              && caseAfter(caseId).lastEventId == eventId)
+            || (e.referralId != null && referralAfter(e.referralId).lastEventId == eventId);
+        }
+      }
+    }
+
+    // ---------------- referrals (metadados administrativos) ----------------
+    match /referrals/{referralId} {
+      allow get, list: if isAdmin() || referralReadable(resource.data);
+
+      allow create: if isSchoolDirector()
+        && referralKeysValid(request.resource.data)
+        && request.resource.data.status == 'enviado'
+        && request.resource.data.assignedPsychologistUid == null
+        && request.resource.data.assignedPsychologistName == null
+        && request.resource.data.previousStatus == null
+        && stampedCreate(request.resource.data)
+        && referralMatchesCase(request.resource.data)
+        && destinationIsActiveUbs(request.resource.data.destinationInstitutionId)
+        && existsAfter(/databases/$(database)/documents/referrals/$(referralId)/private/details)
+        && eventBy(request.resource.data.caseId, request.resource.data.lastEventId, 'referral.sent');
+
+      allow update: if referralUpdateCommon()
+        && (ubsUpdate() || psychologistUpdate() || schoolUpdate());
+
+      allow delete: if false;
+
+      function referralReadable(r) {
+        return (isSchoolDirector() && memberOf(r.originInstitutionId))
+          || healthCanReadReferral(r)
+          || (isFamily() && guardianOf(r.studentId))
+          || teacherLinked(get(casePath(r.caseId)).data);
+      }
+
+      function referralKeysValid(d) {
+        return d.keys().hasAll(['caseId', 'studentId', 'studentName', 'originInstitutionId',
+            'destinationInstitutionId', 'status', 'previousStatus', 'assignedPsychologistUid',
+            'assignedPsychologistName', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
+            'lastEventId'])
+          && d.keys().hasOnly(['caseId', 'studentId', 'studentName', 'originInstitutionId',
+            'destinationInstitutionId', 'status', 'previousStatus', 'assignedPsychologistUid',
+            'assignedPsychologistName', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
+            'lastEventId']);
+      }
+
+      // Caso já aprovado (estado após o batch) da escola da Direção.
+      function referralMatchesCase(d) {
+        return memberOf(caseAfter(d.caseId).schoolInstitutionId)
+          && caseAfter(d.caseId).status in ['encaminhado', 'em_acompanhamento']
+          && caseAfter(d.caseId).activeReferrals.get(referralId, null) == d.destinationInstitutionId
+          && d.originInstitutionId == caseAfter(d.caseId).schoolInstitutionId
+          && d.studentId == caseAfter(d.caseId).studentId
+          && d.studentName == caseAfter(d.caseId).studentName;
+      }
+
+      function destinationIsActiveUbs(institutionId) {
+        return get(/databases/$(database)/documents/institutions/$(institutionId)).data.type == 'ubs'
+          && get(/databases/$(database)/documents/institutions/$(institutionId)).data.active == true;
+      }
+
+      function referralUpdateCommon() {
+        return stampedUpdate()
+          && request.resource.data.caseId == resource.data.caseId
+          && request.resource.data.studentId == resource.data.studentId
+          && request.resource.data.studentName == resource.data.studentName
+          && request.resource.data.originInstitutionId == resource.data.originInstitutionId
+          && request.resource.data.destinationInstitutionId == resource.data.destinationInstitutionId
+          && request.resource.data.lastEventId != resource.data.lastEventId
+          && !(resource.data.status in ['finalizado', 'devolvido', 'recusado']);
+      }
+
+      function base() {
+        return ['status', 'updatedAt', 'updatedBy', 'lastEventId'];
+      }
+
+      function moves(from, to) {
+        return resource.data.status in from && request.resource.data.status == to;
+      }
+
+      function ev(type) {
+        return eventBy(resource.data.caseId, request.resource.data.lastEventId, type);
+      }
+
+      function noteFor(kind) {
+        return getAfter(notePath(referralId, request.resource.data.lastEventId)).data.kind == kind
+          && getAfter(notePath(referralId, request.resource.data.lastEventId)).data.authorUid == request.auth.uid;
+      }
+
+      function psychologistValid(psychologistUid, name) {
+        return get(/databases/$(database)/documents/users/$(psychologistUid)).data.role == 'health'
+          && get(/databases/$(database)/documents/users/$(psychologistUid)).data.healthRole == 'psychologist'
+          && get(/databases/$(database)/documents/users/$(psychologistUid)).data.active == true
+          && resource.data.destinationInstitutionId in get(/databases/$(database)/documents/users/$(psychologistUid)).data.get('institutionIds', [])
+          && get(/databases/$(database)/documents/users/$(psychologistUid)).data.name == name;
+      }
+
+      function ubsUpdate() {
+        return isUbsDirector()
+          && memberOf(resource.data.destinationInstitutionId)
+          && ((affected().hasOnly(base()) && moves(['enviado'], 'recebido') && ev('referral.received'))
+            || (affected().hasOnly(['status', 'updatedAt', 'updatedBy', 'lastEventId',
+                  'assignedPsychologistUid', 'assignedPsychologistName'])
+                && moves(['recebido'], 'atribuido')
+                && psychologistValid(request.resource.data.assignedPsychologistUid,
+                  request.resource.data.assignedPsychologistName)
+                && ev('referral.assigned'))
+            || (affected().hasOnly(['updatedAt', 'updatedBy', 'lastEventId',
+                  'assignedPsychologistUid', 'assignedPsychologistName'])
+                && resource.data.status in ['atribuido', 'em_atendimento']
+                && request.resource.data.status == resource.data.status
+                && request.resource.data.assignedPsychologistUid != resource.data.assignedPsychologistUid
+                && psychologistValid(request.resource.data.assignedPsychologistUid,
+                  request.resource.data.assignedPsychologistName)
+                && ev('referral.transferred'))
+            || (affected().hasOnly(['status', 'updatedAt', 'updatedBy', 'lastEventId', 'previousStatus'])
+                && moves(['recebido', 'atribuido', 'em_atendimento'], 'complementacao_solicitada')
+                && request.resource.data.previousStatus == resource.data.status
+                && noteFor('complementRequest')
+                && ev('referral.complementRequested'))
+            || (affected().hasOnly(base())
+                && moves(['enviado', 'recebido', 'complementacao_solicitada', 'atribuido'], 'devolvido')
+                && noteFor('return') && ev('referral.returned') && removedFromCase())
+            || (affected().hasOnly(base())
+                && moves(['enviado', 'recebido', 'complementacao_solicitada', 'atribuido'], 'recusado')
+                && noteFor('refusal') && ev('referral.refused') && removedFromCase())
+            || (affected().hasOnly(base())
+                && moves(['em_atendimento', 'devolutiva_registrada'], 'finalizado')
+                && ev('referral.finalized') && removedFromCase()));
+      }
+
+      // O encerramento do encaminhamento retira-o dos ativos do caso no mesmo batch.
+      function removedFromCase() {
+        return !(referralId in caseAfter(resource.data.caseId).activeReferrals);
+      }
+
+      function psychologistUpdate() {
+        return isPsychologist()
+          && resource.data.assignedPsychologistUid == request.auth.uid
+          && affected().hasOnly(base())
+          && ((moves(['atribuido'], 'em_atendimento') && ev('referral.statusChanged'))
+            || (moves(['atribuido', 'em_atendimento', 'devolutiva_registrada'], 'devolutiva_registrada')
+              && ev('healthReturn.created')));
+      }
+
+      // Resposta da Direção escolar à complementação pedida pela UBS (D-20).
+      function schoolUpdate() {
+        return isSchoolDirector()
+          && memberOf(resource.data.originInstitutionId)
+          && affected().hasOnly(['status', 'updatedAt', 'updatedBy', 'lastEventId', 'previousStatus'])
+          && resource.data.status == 'complementacao_solicitada'
+          && request.resource.data.status == resource.data.previousStatus
+          && request.resource.data.previousStatus == null
+          && noteFor('complementAnswer')
+          && ev('referral.complementAnswered');
+      }
+
+      function detailsReadable(r) {
+        return (isSchoolDirector() && memberOf(r.originInstitutionId)) || healthCanReadReferral(r);
+      }
+
+      // Motivo e resumo mínimo (D-13): fora do alcance de admin, família e professor.
+      match /private/{docId} {
+        allow get: if docId == 'details' && detailsReadable(get(referralPath(referralId)).data);
+        allow create: if docId == 'details'
+          && isSchoolDirector()
+          && referralAfter(referralId).createdBy == request.auth.uid
+          && referralAfter(referralId).status == 'enviado'
+          && memberOf(referralAfter(referralId).originInstitutionId)
+          && request.resource.data.keys().hasAll(['reason', 'summary', 'createdAt', 'createdBy'])
+          && request.resource.data.keys().hasOnly(['reason', 'summary', 'createdAt', 'createdBy'])
+          && isText(request.resource.data.reason, 1, 1000)
+          && isText(request.resource.data.summary, 1, 5000)
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.createdBy == request.auth.uid;
+        allow list, update, delete: if false;
+      }
+
+      // Justificativas, pedidos e respostas de complementação, atualizações (restritos).
+      match /notes/{noteId} {
+        allow get, list: if noteReadable(get(referralPath(referralId)).data, resource.data);
+        allow create: if request.resource.data.keys().hasAll(['kind', 'text', 'audience',
+            'authorUid', 'authorName', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['kind', 'text', 'audience',
+            'authorUid', 'authorName', 'createdAt'])
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorName == myName()
+          && isText(request.resource.data.text, 1, 5000)
+          && request.resource.data.createdAt == request.time
+          && noteCreateValid(request.resource.data);
+        allow update, delete: if false;
+
+        function noteReadable(r, n) {
+          return (isSchoolDirector() && memberOf(r.originInstitutionId) && 'school' in n.audience)
+            || (isUbsDirector() && memberOf(r.destinationInstitutionId) && 'ubs' in n.audience)
+            || (isPsychologist() && r.assignedPsychologistUid == request.auth.uid
+              && 'psychologist' in n.audience);
+        }
+
+        function noteCreateValid(n) {
+          return (n.kind in ['complementRequest', 'return', 'refusal']
+              && isUbsDirector()
+              && memberOf(referralAfter(referralId).destinationInstitutionId)
+              && n.audience == ['school', 'ubs']
+              && referralAfter(referralId).lastEventId == noteId)
+            || (n.kind == 'complementAnswer'
+              && isSchoolDirector()
+              && memberOf(referralAfter(referralId).originInstitutionId)
+              && n.audience == ['school', 'ubs', 'psychologist']
+              && referralAfter(referralId).lastEventId == noteId)
+            || (n.kind == 'progress'
+              && isPsychologist()
+              && referralAfter(referralId).assignedPsychologistUid == request.auth.uid
+              && referralAfter(referralId).status in ['atribuido', 'em_atendimento', 'devolutiva_registrada']
+              && n.audience == ['psychologist']);
+        }
+      }
+    }
+
+    // ---------------- healthReturns (devolutivas) ----------------
+    match /healthReturns/{returnId} {
+      allow get, list: if healthReturnReadable(resource.data);
+
+      allow create: if isPsychologist()
+        && request.resource.data.keys().hasAll(['referralId', 'caseId', 'studentId', 'audience',
+          'content', 'authorUid', 'authorName', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['referralId', 'caseId', 'studentId', 'audience',
+          'content', 'authorUid', 'authorName', 'createdAt'])
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorName == myName()
+        && request.resource.data.createdAt == request.time
+        && isText(request.resource.data.content, 1, 10000)
+        && request.resource.data.audience is list
+        && request.resource.data.audience.size() >= 1
+        && request.resource.data.audience.toSet().difference(['school', 'family'].toSet()).size() == 0
+        && referralAfter(request.resource.data.referralId).assignedPsychologistUid == request.auth.uid
+        && referralAfter(request.resource.data.referralId).caseId == request.resource.data.caseId
+        && referralAfter(request.resource.data.referralId).studentId == request.resource.data.studentId
+        && referralAfter(request.resource.data.referralId).status == 'devolutiva_registrada'
+        && referralAfter(request.resource.data.referralId).lastEventId == returnId;
+
+      allow update, delete: if false;
+
+      // Admin e Direção da UBS não leem o conteúdo (D-11, D-13).
+      function healthReturnReadable(h) {
+        return (isPsychologist() && h.authorUid == request.auth.uid)
+          || (isPsychologist()
+            && get(referralPath(h.referralId)).data.assignedPsychologistUid == request.auth.uid)
+          || ('school' in h.audience && isSchoolDirector()
+            && memberOf(get(referralPath(h.referralId)).data.originInstitutionId))
+          || ('school' in h.audience && teacherLinked(get(casePath(h.caseId)).data))
+          || ('family' in h.audience && isFamily() && guardianOf(h.studentId));
+      }
+    }
+
+    // ---------------- notifications (N-01..N-04): central da família ----------------
+    // Só referências e o tipo do evento; título e mensagem são textos fixos do
+    // app (nenhum conteúdo pedagógico, clínico ou justificativa).
+    function familyNotificationTypes() {
+      return ['case.approved', 'referral.sent', 'referral.received', 'referral.assigned',
+        'referral.transferred', 'referral.statusChanged', 'referral.complementRequested',
+        'referral.returned', 'referral.refused', 'healthReturn.created',
+        'referral.finalized', 'case.concluded'];
+    }
+
+    match /notifications/{notificationId} {
+      allow get, list: if isFamily() && guardianOf(resource.data.studentId);
+
+      allow create: if notificationCreateValid(request.resource.data);
+
+      // A família só marca como lida (uma vez, com o horário do servidor).
+      allow update: if isFamily() && guardianOf(resource.data.studentId)
+        && affected().hasOnly(['readAt'])
+        && resource.data.readAt == null
+        && request.resource.data.readAt == request.time;
+
+      allow delete: if false;
+
+      function notificationEvent(d) {
+        return getAfter(eventPath(d.caseId, d.eventId)).data;
+      }
+
+      // Autor e destinatário não são forjáveis: o evento é do próprio autor,
+      // gravado no mesmo batch, e o estudante vem do caso.
+      function notificationCreateValid(d) {
+        return d.keys().hasAll(['studentId', 'caseId', 'eventId', 'referralId', 'type',
+            'createdAt', 'createdBy', 'readAt'])
+          && d.keys().hasOnly(['studentId', 'caseId', 'eventId', 'referralId', 'type',
+            'createdAt', 'createdBy', 'readAt'])
+          && d.caseId is string && d.eventId is string && d.studentId is string
+          && notificationId == d.caseId + '_' + d.eventId
+          && d.type in familyNotificationTypes()
+          && d.createdBy == request.auth.uid
+          && d.createdAt == request.time
+          && d.readAt == null
+          && notificationEvent(d).type == d.type
+          && notificationEvent(d).actorUid == request.auth.uid
+          && notificationEvent(d).createdAt == request.time
+          && notificationEvent(d).visibility == 'familia'
+          && notificationEvent(d).referralId == d.referralId
+          && caseAfter(d.caseId).studentId == d.studentId
+          && caseAfter(d.caseId).familyVisible == true;
+      }
+    }
+
+    // ---------------- documentExports (R-07): registro das exportações em PDF ----------------
+    // Só metadados (tipo, ação, caso e quantidade de itens), nunca o conteúdo.
+    // Cada perfil registra apenas o tipo de documento que pode gerar, para
+    // casos e encaminhamentos que consegue ler. O admin lê os metadados (D-11).
+    match /documentExports/{exportId} {
+      allow read: if isAdmin();
+      allow create: if request.resource.data.keys().hasAll(['kind', 'action', 'caseId',
+          'referralId', 'actorUid', 'itemCount', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['kind', 'action', 'caseId',
+          'referralId', 'actorUid', 'itemCount', 'createdAt'])
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.action in ['generated', 'share_opened', 'print_opened', 'downloaded']
+        && request.resource.data.itemCount is int
+        && request.resource.data.itemCount >= 1 && request.resource.data.itemCount <= 1000
+        && request.resource.data.caseId is string
+        && exportAllowed(request.resource.data);
+      allow update, delete: if false;
+
+      function exportAllowed(d) {
+        return (d.kind == 'pedagogical' && d.referralId == null
+            && teacherLinked(get(casePath(d.caseId)).data))
+          || (d.kind == 'school' && d.referralId == null && isSchoolDirector()
+            && memberOf(get(casePath(d.caseId)).data.schoolInstitutionId))
+          || (d.kind == 'family' && d.referralId == null
+            && familyCanRead(get(casePath(d.caseId)).data))
+          || (d.kind == 'health' && d.referralId is string && isPsychologist()
+            && get(referralPath(d.referralId)).data.assignedPsychologistUid == request.auth.uid
+            && get(referralPath(d.referralId)).data.caseId == d.caseId)
+          || (d.kind == 'ubs' && d.referralId is string && isUbsDirector()
+            && memberOf(get(referralPath(d.referralId)).data.destinationInstitutionId)
+            && get(referralPath(d.referralId)).data.caseId == d.caseId);
+      }
     }
 
     match /{document=**} {
