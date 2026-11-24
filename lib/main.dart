@@ -4,20 +4,23 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
+import 'app/firebase_config.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+    options: firebaseOptionsFor(
+      DefaultFirebaseOptions.currentPlatform,
+      useEmulators: useFirebaseEmulators,
+    ),
   );
-  if (const bool.fromEnvironment('USE_FIREBASE_EMULATORS')) {
-    const host = String.fromEnvironment(
-      'FIREBASE_EMULATOR_HOST',
-      defaultValue: '10.0.2.2',
-    );
-    await FirebaseAuth.instance.useAuthEmulator(host, 9099);
-    FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+  // Sem cache persistente de dados sensíveis (modo offline fora do escopo).
+  FirebaseFirestore.instance.settings =
+      const Settings(persistenceEnabled: false);
+  await configureFirebaseAuth(FirebaseAuth.instance);
+  if (useFirebaseEmulators) {
+    FirebaseFirestore.instance.useFirestoreEmulator(firebaseEmulatorHost, 8080);
   }
   runApp(const CaminhoAzulApp());
 }
