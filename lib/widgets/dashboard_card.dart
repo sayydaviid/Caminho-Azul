@@ -7,12 +7,16 @@ class AppCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(16),
     this.color = AppColors.card,
+    this.highlighted = false,
     super.key,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final Color color;
+
+  /// Destaque (ex.: item aberto a partir de uma notificação).
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +30,9 @@ class AppCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Ink(
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.border),
+            border: Border.all(
+                color: highlighted ? AppColors.primary : AppColors.border,
+                width: highlighted ? 2 : 1),
             borderRadius: borderRadius,
           ),
           child: Padding(
