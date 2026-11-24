@@ -16,3 +16,5 @@ functions/*-debug.log
 scripts/*-debug.log
 *.bak
 *.iml
+*-debug.log
+.claude/
