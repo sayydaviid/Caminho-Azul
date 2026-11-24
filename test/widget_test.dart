@@ -137,7 +137,7 @@ void main() {
     await _tapSubmit(tester);
     await tester.pumpAndSettle();
 
-    expect(find.text('E-mail ou senha invalidos.'), findsOneWidget);
+    expect(find.text('E-mail ou senha inválidos.'), findsOneWidget);
   });
 
   testWidgets('bloqueia acesso quando perfil selecionado diverge do cadastrado',
@@ -382,15 +382,15 @@ void main() {
     await tester.tap(find.byKey(const Key('admin-form-role')));
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('admin-school-role-option-professor')),
+      find.byKey(const Key('admin-school-role-option-teacher')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('admin-school-role-option-direcao')),
+      find.byKey(const Key('admin-school-role-option-director')),
       findsOneWidget,
     );
     await tester.tap(
-      find.byKey(const Key('admin-school-role-option-professor')),
+      find.byKey(const Key('admin-school-role-option-teacher')),
     );
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('admin-form-submit')));
@@ -484,13 +484,13 @@ void main() {
     await tester.tap(find.byKey(const Key('admin-form-role')));
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('admin-role-option-saude')),
+      find.byKey(const Key('admin-role-option-health')),
       findsOneWidget,
     );
     await tester.ensureVisible(
-      find.byKey(const Key('admin-role-option-saude')),
+      find.byKey(const Key('admin-role-option-health')),
     );
-    await tester.tap(find.byKey(const Key('admin-role-option-saude')));
+    await tester.tap(find.byKey(const Key('admin-role-option-health')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('admin-form-submit')));
     await tester.tap(find.byKey(const Key('admin-form-submit')));
@@ -540,14 +540,16 @@ void main() {
     );
   });
 
-  test('roles persistidas aceitam valores atuais e legados', () {
-    expect(UserRole.fromValue('escola'), UserRole.school);
+  test('roles persistidas: só valores canônicos dão acesso; legados só normalizam', () {
     expect(UserRole.fromValue('school'), UserRole.school);
-    expect(UserRole.fromValue('familia'), UserRole.family);
-    expect(UserRole.fromValue('saude'), UserRole.health);
+    expect(UserRole.fromValue('family'), UserRole.family);
+    expect(UserRole.fromValue('health'), UserRole.health);
     expect(UserRole.fromValue('admin'), UserRole.administration);
-    expect(SchoolRole.fromValue('professor'), SchoolRole.teacher);
-    expect(SchoolRole.fromValue('direcao'), SchoolRole.leadership);
+    expect(UserRole.fromValue('escola'), isNull);
+    expect(UserRole.fromLegacyValue('escola'), UserRole.school);
+    expect(SchoolRole.fromValue('teacher'), SchoolRole.teacher);
+    expect(SchoolRole.fromLegacyValue('professor'), SchoolRole.teacher);
+    expect(SchoolRole.fromLegacyValue('direcao'), SchoolRole.director);
     expect(SchoolRole.fromValue('coordenacao'), isNull);
   });
 
