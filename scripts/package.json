@@ -4,8 +4,11 @@
   "type": "commonjs",
   "scripts": {
     "create:first-admin": "node create_first_admin.js",
-    "test": "npm run test:rules",
-    "test:rules": "firebase --config ../firebase.test.json emulators:exec --project demo-caminhoazul --only firestore \"node --test test/firestore.rules.test.js\""
+    "emulators": "firebase --config ../firebase.json emulators:start --only auth,firestore --project demo-caminhoazul",
+    "seed:emulator": "node seed_emulator.js",
+    "test": "npm run test:seed && npm run test:rules",
+    "test:seed": "node --test test/seed.guard.test.js test/seed.domain.test.js",
+    "test:rules": "firebase --config ../firebase.test.json emulators:exec --project demo-caminhoazul --only firestore \"node --test --test-concurrency=1 test/firestore.rules.test.js test/domain.rules.test.js\""
   },
   "dependencies": {
     "firebase-admin": "^13.0.0"
