@@ -1,52 +1,46 @@
-# Caminho Azul Mobile
+# Caminho Azul
 
-Aplicacao Flutter mobile baseada no layout original criado no Figma. A interface
-usa Material 3, Navigator nativo, dados mockados e uma estrutura preparada para
-substituir os mocks por Firebase Authentication, Firestore e Firebase Storage.
+O Caminho Azul é um aplicativo para acompanhar estudantes com TEA (Transtorno do
+Espectro Autista). Ele liga a escola, a unidade de saúde (UBS) e a família.
 
-## Estrutura
+Cada pessoa entra com a própria conta e vê só a parte que lhe cabe.
 
-```text
-lib/
-  main.dart
-  app/
-    app.dart
-    router.dart
-    theme.dart
-  data/
-    mock_data.dart
-  models/
-    app_models.dart
-  screens/
-    login_screen.dart
-    dashboard_screen.dart
-    admin_screen.dart
-    familia_screen.dart
-    saude_screen.dart
-    documentos_screen.dart
-    ficha_observacao_screen.dart
-    linha_tempo_screen.dart
-    relatorio_screen.dart
-  widgets/
-    app_shell.dart
-    dashboard_card.dart
-    custom_button.dart
-    custom_input.dart
-    status_badge.dart
-    page_header.dart
-    bottom_nav.dart
-```
+## Quem usa e o que faz
 
-## Executar
+| Quem | O que faz no aplicativo |
+|---|---|
+| **Administração** | Cadastra as escolas e as UBS e cria as contas de todas as pessoas. |
+| **Direção da escola** | Cadastra os estudantes, aprova os casos e encaminha para a UBS. |
+| **Professor(a)** | Abre o caso do estudante e registra o que observa em sala. |
+| **Direção da UBS** | Recebe os encaminhamentos e escolhe o(a) psicólogo(a) responsável. |
+| **Psicólogo(a)** | Atende e registra a devolutiva para a escola e para a família. |
+| **Família** | Acompanha o andamento, recebe avisos e lê as devolutivas. |
 
-O codigo da aplicacao nao depende de pacotes externos. Em uma maquina com o
-Flutter instalado, gere apenas os runners nativos uma vez e execute:
+## Como começar
 
-```bash
-flutter create --platforms=android,ios .
-flutter pub get
-flutter run
-```
+1. **Instale o aplicativo** no celular Android. O passo a passo está no
+   [Guia de uso](docs/GUIA_DE_USO.md#1-instalar-no-celular).
+2. **Entre como Administração** e prepare a rede: escolas, UBS e contas das
+   pessoas. Veja o [Guia da Administração](docs/ADMINISTRACAO.md).
+3. Cada pessoa cadastrada **recebe um e-mail** para criar a própria senha e já
+   pode entrar.
 
-O comando `flutter create` preserva a pasta `lib/` e cria o boilerplate nativo
-necessario para Android e iOS.
+## Documentação
+
+| Documento | Para quem |
+|---|---|
+| [Guia de uso](docs/GUIA_DE_USO.md) | Todas as pessoas: instalar, entrar e usar cada perfil. |
+| [Guia da Administração](docs/ADMINISTRACAO.md) | Quem administra: preparar a rede e cuidar das contas. |
+| [Documentação técnica](docs/TECNICO.md) | Desenvolvedores: rodar o projeto, testar, gerar o APK e publicar. |
+| [Modelo de dados](docs/MODELO_DADOS.md) | Desenvolvedores: como as informações ficam guardadas. |
+| [Guia da marca](docs/identidade/GUIA_MARCA.md) | Quem for usar o logotipo e as cores. |
+
+## Bom saber
+
+- Os dados ficam no Google Firebase, no plano gratuito.
+- As regras de segurança impedem que um perfil veja o que não é dele. Por
+  exemplo, a família não vê as observações internas da escola.
+- Hoje o aplicativo roda no **Android** e no **navegador**. Ainda não há versão
+  para **iPhone**.
+- Os avisos para a família aparecem **com o aplicativo aberto**. Avisos com o
+  aplicativo fechado (push) exigiriam um serviço pago.
